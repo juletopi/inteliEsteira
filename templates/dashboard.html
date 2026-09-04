@@ -1,0 +1,421 @@
+{% extends "layout.html" %}
+
+{% block title %}InteliEsteira | Dashboard{% endblock %}
+
+{% block head %}
+<style>
+    h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        font-weight: 800;
+        letter-spacing: -0.06em;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+    }
+
+    .eyebrow,
+    .small-label,
+    .metric-label {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .live-indicator {
+        color: var(--green);
+        font-size: 0.82rem;
+    }
+
+    .live-indicator span {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        margin-right: 5px;
+        border-radius: 50%;
+        background: var(--green);
+    }
+
+    .metric-card {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        min-height: 132px;
+        padding: 24px;
+        border-radius: 16px;
+        color: white;
+    }
+
+    .metric-card-primary {
+        background: var(--teal);
+    }
+
+    .metric-card-accent {
+        background: var(--orange);
+    }
+
+    .metric-card-dark {
+        background: var(--ink);
+    }
+
+    .metric-icon {
+        font-size: 1.9rem;
+        opacity: 0.8;
+    }
+
+    .metric-value {
+        display: block;
+        font-size: 2rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .metric-card .metric-label {
+        display: block;
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.75);
+    }
+
+    .surface-panel {
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+        box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
+    }
+
+    .panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 22px;
+    }
+
+    .device-status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.9rem;
+        font-weight: 700;
+    }
+
+    .badge-status {
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: #e2f4e5;
+        color: var(--green);
+        font-size: 0.7rem;
+    }
+
+    .badge-offline {
+        background: #ffe6e2;
+        color: #dd5647;
+    }
+
+    .alert-warning {
+        border: 0;
+        background: #fff0df;
+        color: #a45e21;
+        font-size: 0.78rem;
+    }
+
+    .alert-warning i {
+        margin-right: 10px;
+    }
+
+    .production-card {
+        min-height: 88px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--orange);
+        border-radius: 10px;
+        background: #fbfcfb;
+    }
+
+    .production-card span,
+    .production-card strong {
+        display: block;
+    }
+
+    .production-card span {
+        color: var(--muted);
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .production-card strong {
+        margin-top: 8px;
+        font-size: 0.88rem;
+    }
+
+    .control-row {
+        display: flex;
+        gap: 18px;
+        align-items: stretch;
+    }
+
+    .control-actions {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 800;
+    }
+
+    .btn-primary {
+        border-color: var(--teal);
+        background: var(--teal);
+    }
+
+    .btn-primary:hover {
+        border-color: #0d6f74;
+        background: #0d6f74;
+    }
+
+    .camera-placeholder {
+        display: flex;
+        min-height: 94px;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        border-radius: 10px;
+        background: #eef3f1;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+
+    .camera-placeholder i {
+        font-size: 1.5rem;
+    }
+
+    .inventory-items {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 0.82rem;
+    }
+
+    .inventory-items span {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .inventory-items strong {
+        color: var(--ink);
+    }
+
+    .inventory-items i {
+        color: var(--teal);
+    }
+
+    @media (max-width: 650px) {
+        .dashboard-container { width: min(100% - 24px, 1180px); }
+        .surface-panel { padding: 18px; }
+        .control-row, .inventory-items { display: block; }
+        .camera-placeholder { margin-top: 16px; }
+        .inventory-items span { margin-top: 12px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main id="dashboard" class="dashboard-container py-4 py-lg-5">
+    <header class="page-heading d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+        <div>
+            <h1>Dashboard</h1>
+            <p class="eyebrow mb-2">Visão geral da operação</p>
+        </div>
+        <div class="live-indicator"><span></span> <strong id="system-status">Carregando...</strong></div>
+    </header>
+
+    <!-- seção mockada -->
+    <section class="row g-3 mb-3" aria-label="Indicadores da operação">
+        <div class="col-12 col-md-4">
+            <article class="metric-card metric-card-primary h-100">
+                <div class="metric-icon">
+                    <i class="bi bi-cpu-fill"></i>
+                </div>
+                <div>
+                    <span class="metric-value" id="connected-components">3</span>
+                    <span class="metric-label">Componentes<br>conectados</span>
+                </div>
+            </article>
+        </div>
+        <div class="col-12 col-md-4">
+            <article class="metric-card metric-card-accent h-100">
+                <div class="metric-icon">
+                    <i class="bi bi-boxes"></i>
+                </div>
+                <div>
+                    <span class="metric-value" id="packages-count">7</span>
+                    <span class="metric-label">Pacotes na<br>linha de prod.</span>
+                </div>
+            </article>
+        </div>
+        <div class="col-12 col-md-4">
+            <article class="metric-card metric-card-dark h-100">
+                <div class="metric-icon">
+                    <i class="bi bi-stopwatch-fill"></i>
+                </div>
+                <div>
+                    <span class="metric-value" id="running-time">1 min. 37s</span>
+                    <span class="metric-label">Esteira rodando</span>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="row g-3" aria-label="Controles e monitoramento">
+        <div class="col-12 col-lg-4">
+            <article id="conexao"class="surface-panel h-100">
+                <div class="panel-title">
+                    <h2>Componentes</h2>
+                    <i class="bi bi-three-dots"></i>
+                </div>
+                <div class="device-status">
+                    <span>Braço mecânico</span>
+                    <span id="gripper-status"class="badge-status">Conectado</span>
+                </div>
+                <div class="device-status">
+                    <span>Esteira</span>
+                    <span id="conveyor-status" class="badge-status">Conectado</span>
+                </div>
+                <div class="device-status">
+                    <span>Webcam</span>
+                    <span class="badge-status badge-offline">Desconectado</span>
+                </div>
+                <div class="alert alert-warning mt-4 mb-0">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>
+                        <strong>Aviso</strong><br>
+                        Verifique a conexão da webcam.
+                    </span>
+                </div>
+            </article>
+        </div>
+        <div class="col-12 col-lg-8">
+            <article id="linha-de-montagem" class="surface-panel h-100">
+                <div class="panel-title">
+                    <h2>Linha de produção</h2>
+                    <span class="small-label">4 destinos</span>
+                </div>
+                <div class="row g-2 production-list mb-4">
+                    <div class="col-6 col-xl-3">
+                        <div class="production-card">
+                            <span>Norte</span>
+                            <strong>Rondônia</strong>
+                        </div>
+                    </div>
+                    <div class="col-6 col-xl-3">
+                        <div class="production-card">
+                            <span>Sul</span>
+                            <strong>Rio Grande do Sul</strong>
+                        </div>
+                    </div>
+                    <div class="col-6 col-xl-3">
+                        <div class="production-card">
+                            <span>Nordeste</span>
+                            <strong>Ceará</strong>
+                        </div>
+                    </div>
+                    <div class="col-6 col-xl-3">
+                        <div class="production-card">
+                            <span>Sul</span>
+                            <strong>Paraná</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="control-row">
+                    <div class="control-actions">
+                        <button
+                            type="button"
+                            id="check-button"
+                            class="btn btn-light">
+                            <i class="bi bi-check2-circle"></i>Check
+                        </button>
+
+                        <button
+                            type="button"
+                            id="start-button"
+                            class="btn btn-primary">
+                            <i class="bi bi-play-fill"></i>Run
+                        </button>
+
+                        <button
+                            type="button"
+                            id="stop-button"
+                            class="btn btn-outline-secondary">
+                            <i class="bi bi-stop-fill"></i>Stop
+                        </button>
+                    </div>
+                    <div class="camera-placeholder">
+                        <i class="bi bi-camera-video-fill"></i>
+                        <span>Webcam offline</span>
+                    </div>
+                </div>
+            </article>
+        </div>
+    </section>
+
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function setStatusBadge(selector, isConnected) {
+        const $badge = $(selector);
+        
+        $badge.text(isConnected ? "Conectado" : "Desconectado");
+        $badge.toggleClass("badge-offline", !isConnected);
+    }
+
+    async function updateStatus() {
+        const response = await fetch("{{ url_for('api.status') }}");
+        const data = await response.json();
+
+        $("#system-status").text(data.sistema);
+        
+        setStatusBadge("#gripper-status", data.garra !== "desconectada");
+        setStatusBadge("#conveyor-status", data.esteira !== "desconectada");
+    }
+
+    $(function () {
+        updateStatus().catch(() => {
+            $("#system-status").text("Sem conexão");
+            $(".live-indicator").css("color", "#dd5647");
+        });
+
+        $("#start-button").on("click", function () {
+            $("#system-status").text("RUNNING");
+            $("#conveyor-status").text("Conectado").removeClass("badge-offline");
+        });
+
+        $("#stop-button").on("click", function () {
+            $("#system-status").text("IDLE");
+            $("#conveyor-status").text("Parada").addClass("badge-offline");
+        });
+
+        $(".nav-link").on("click", function () {
+            $(".nav-link").removeClass("active");
+            $(this).addClass("active");
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,172 @@
+{% extends "layout.html" %}
+
+{% block title %}InteliEsteira | Conexão{% endblock %}
+
+{% block head %}
+<style>
+    h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        font-weight: 800;
+        letter-spacing: -0.06em;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+    }
+
+    .eyebrow,
+    .small-label {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .surface-panel {
+        height: 100%;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+        box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
+    }
+
+    .panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 22px;
+    }
+
+    .device-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--line);
+        font-weight: 700;
+    }
+
+    .device-row small {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 400;
+    }
+
+    .badge-status {
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: #e2f4e5;
+        color: var(--green);
+        font-size: 0.7rem;
+    }
+
+    .badge-offline {
+        background: #ffe6e2;
+        color: #dd5647;
+    }
+
+    .form-label {
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 700;
+    }
+
+    .form-control,
+    .form-select {
+        border-color: var(--line);
+        border-radius: 8px;
+    }
+
+    .btn-primary {
+        border-color: var(--teal);
+        background: var(--teal);
+    }
+
+    .btn-primary:hover {
+        border-color: #0d6f74;
+        background: #0d6f74;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="dashboard-container py-4 py-lg-5">
+    <header class="mb-4">
+        <p class="eyebrow mb-2">Diagnóstico do sistema</p>
+        <h1>Conexão</h1>
+    </header>
+
+    <section class="row g-3" aria-label="Configuração dos componentes">
+        <div class="col-12 col-lg-6">
+            <article class="surface-panel">
+                <div class="panel-title">
+                    <h2>Status dos componentes</h2>
+                    <span class="small-label">Em tempo real</span>
+                </div>
+
+                <div class="device-row">
+                    <div>
+                        Garra
+                        <small>Controlador de movimento</small>
+                    </div>
+                    <span class="badge-status">Aguardando API</span>
+                </div>
+
+                <div class="device-row">
+                    <div>
+                        Esteira
+                        <small>Motor e sensores</small>
+                    </div>
+                    <span class="badge-status">Aguardando API</span>
+                </div>
+
+                <div class="device-row">
+                    <div>
+                        Câmera
+                        <small>Captura e leitura de QR Code</small>
+                    </div>
+                    <span class="badge-status badge-offline">Não configurada</span>
+                </div>
+            </article>
+        </div>
+
+        <div class="col-12 col-lg-6">
+            <article class="surface-panel">
+                <div class="panel-title">
+                    <h2>Configuração</h2>
+                    <span class="small-label">Preparação</span>
+                </div>
+
+                <form>
+                    <label class="form-label" for="arduino-port">Porta do Arduino</label>
+                    <input
+                        id="arduino-port"
+                        class="form-control mb-3"
+                        type="text"
+                        value="COM3">
+
+                    <label class="form-label" for="camera-index">Índice da câmera</label>
+                    <input
+                        id="camera-index"
+                        class="form-control mb-3"
+                        type="number"
+                        min="0"
+                        value="0">
+
+                    <button type="button" class="btn btn-primary">
+                        <i class="bi bi-save2"></i>
+                        Salvar configuração
+                    </button>
+                </form>
+            </article>
+        </div>
+    </section>
+</main>
+{% endblock %}

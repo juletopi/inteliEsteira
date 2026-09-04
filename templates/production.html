@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+
+{% block title %}InteliEsteira | Linha de produção{% endblock %}
+
+{% block head %}
+<style>
+    h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        font-weight: 800;
+        letter-spacing: -0.06em;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+    }
+
+    .eyebrow,
+    .small-label {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .surface-panel {
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+        box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
+    }
+
+    .panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 22px;
+    }
+
+    .history-table th {
+        color: var(--muted);
+        font-size: 0.72rem;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .history-table td {
+        vertical-align: middle;
+        color: var(--ink);
+        font-size: 0.88rem;
+    }
+
+    .status-pill {
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: #e2f4e5;
+        color: var(--green);
+        font-size: 0.7rem;
+        font-weight: 700;
+    }
+
+    .status-pill.pending {
+        background: #fff0df;
+        color: #a45e21;
+    }
+
+    .empty-state {
+        padding: 48px 20px;
+        color: var(--muted);
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="dashboard-container py-4 py-lg-5">
+    <header class="mb-4">
+        <h1>Linha de produção</h1>
+        <p class="eyebrow mb-2">Rastreamento operacional</p>
+    </header>
+
+    <section class="surface-panel" aria-label="Histórico de produtos">
+        <div class="panel-title">
+            <h2>Histórico de produtos</h2>
+            <span class="small-label">Iterações anteriores</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table history-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Produto</th>
+                        <th>QR Code</th>
+                        <th>Destino</th>
+                        <th>Status</th>
+                        <th>Processado em</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="5">
+                            <div class="empty-state">
+                                <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
+                                Nenhum produto registrado nesta sessão.
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+{% endblock %}
