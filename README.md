@@ -1,16 +1,16 @@
 <div align="center">
-	<h1 align="center">InteliEsteira</h1>
+	<h2 align="center">InteliEsteira</h2>
 	<p align="center">
-		Sistema web para monitoramento e automação de esteira com garra, câmera e Arduino.
+		Projeto de monitoramento e automação de esteira LEGO com garra, câmera e Arduino.
 	</p>
 </div>
 
 <div align="center">
 	<a href="https://www.python.org/">
-		<img src="https://img.shields.io/badge/Python-3.x-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python-badge">
+		<img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python-badge">
 	</a>
 	<a href="https://flask.palletsprojects.com/">
-		<img src="https://img.shields.io/badge/Flask-3.x-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask-badge">
+		<img src="https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask-badge">
 	</a>
 	<a href="https://www.arduino.cc/">
 		<img src="https://img.shields.io/badge/Arduino-00979D?style=for-the-badge&logo=arduino&logoColor=white" alt="Arduino-badge">
