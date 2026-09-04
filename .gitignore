@@ -1,4 +1,19 @@
+# python
 __pycache__/
 *.py[cod]
+*$py.class
+
+# venv
 .venv/
+venv/
+env/
+ENV/
+
+# config
 .env
+.env.*
+!.env.example
+
+# OS
+.vscode/
+.idea/
