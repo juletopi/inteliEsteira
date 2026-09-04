@@ -1,0 +1,1 @@
+"""Blueprints responsáveis pelas páginas e APIs da aplicação."""
