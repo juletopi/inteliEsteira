@@ -97,17 +97,17 @@
                 <ul class="navbar-nav ms-auto gap-lg-2">
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'pages.dashboard' %}active{% endif %}" href="{{ url_for('pages.dashboard') }}">
-                            <i class="bi bi-grid-1x2-fill"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'pages.production' %}active{% endif %}" href="{{ url_for('pages.production') }}">
-                            <i class="bi bi-gear-wide-connected"></i>Linha de produção
+                            <i class="bi bi-grid-1x2-fill"></i> Dashboard
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'pages.connection' %}active{% endif %}" href="{{ url_for('pages.connection') }}">
-                            <i class="bi bi-usb-plug-fill"></i>Conexão
+                            <i class="bi bi-usb-plug-fill"></i> Conexão
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'pages.production' %}active{% endif %}" href="{{ url_for('pages.production') }}">
+                            <i class="bi bi-box-seam-fill"></i> Linha de produção
                         </a>
                     </li>
                 </ul>
