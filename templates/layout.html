@@ -14,8 +14,8 @@
             --surface: #ffffff;
             --line: #dfe6e3;
             --orange: #ff8152;
-            --teal: #168c91;
-            --green: #3f9b57;
+            --teal: #349296;
+            --green: #51b878;
         }
 
         *,
@@ -41,77 +41,163 @@
             margin: 0 auto;
         }
 
-        .app-navbar {
-            min-height: 76px;
-            border-bottom: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.9);
+        .main-navbar {
+            width: fit-content;
+            max-width: calc(100% - 24px);
+            margin: 18px auto 0;
+        }
+
+        .navbar-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px;
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 10px 28px rgba(23, 37, 43, 0.08);
             backdrop-filter: blur(12px);
         }
 
-        .brand-mark {
-            display: inline-flex;
+        .main-navbar .nav-item {
+            display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: center;
+            min-width: 0;
+            padding: 11px 20px;
+            border-radius: 999px;
             color: var(--ink);
-            font-size: 1.1rem;
+            font-size: 0.84rem;
             font-weight: 800;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: min-width 0.25s ease, min-height 0.25s ease, padding 0.25s ease,
+                background 0.25s ease, border-radius 0.25s ease, color 0.25s ease;
         }
 
-        .brand-icon {
-            display: grid;
-            width: 34px;
-            height: 34px;
-            place-items: center;
-            border-radius: 10px;
+        .main-navbar .nav-item i {
+            display: none;
+            font-size: 1.65rem;
+            color: var(--ink);
+        }
+
+        .main-navbar .nav-item.active {
             background: var(--orange);
+        }
+
+        .main-navbar.theme-dashboard .nav-item.active {
+            background: var(--green);
+        }
+
+        .main-navbar.theme-connection .nav-item.active {
+            background: var(--teal);
+        }
+
+        .main-navbar.theme-production .nav-item.active {
+            background: var(--orange);
+        }
+
+        .main-navbar .nav-item.active,
+        .main-navbar .nav-item.active i {
             color: white;
         }
 
-        .nav-link {
-            color: var(--muted);
-            font-size: 0.84rem;
-            font-weight: 700;
+        .navbar-container:hover {
+            gap: 4px;
         }
 
-        .nav-link:hover,
-        .nav-link.active {
+        .navbar-container:hover .nav-item {
+            flex-direction: column;
+            min-width: 145px;
+            min-height: 104px;
+            padding: 16px;
+            border-radius: 18px;
+        }
+
+        .navbar-container:hover .nav-item i {
+            display: block;
+            margin-bottom: 12px;
+        }
+
+        .navbar-container:hover .nav-item.theme-dashboard.active,
+        .navbar-container:hover .nav-item.theme-dashboard.active i {
+            color: var(--green);
+        }
+
+        .navbar-container:hover .nav-item.theme-connection.active,
+        .navbar-container:hover .nav-item.theme-connection.active i {
             color: var(--teal);
+        }
+
+        .navbar-container:hover .nav-item.theme-production.active,
+        .navbar-container:hover .nav-item.theme-production.active i {
+            color: var(--orange);
+        }
+
+        .navbar-container:hover .nav-item.active {
+            background: #f1eff4;
+        }
+
+        .navbar-container:hover .nav-item:hover,
+        .navbar-container:hover .nav-item.active:hover {
+            background: #eae7ee;
+        }
+
+        @media (max-width: 820px) {
+            .main-navbar .nav-item {
+                padding: 9px 14px;
+                font-size: 0.76rem;
+            }
+
+            .navbar-container:hover .nav-item {
+                min-width: 110px;
+                min-height: 92px;
+                padding: 12px;
+            }
+        }
+
+        @media (hover: none) {
+            .main-navbar {
+                width: calc(100% - 24px);
+            }
+
+            .navbar-container {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .main-navbar .nav-item {
+                flex: 1 1 130px;
+            }
         }
     </style>
     {% block head %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg app-navbar">
-        <div class="container-fluid dashboard-container">
-            <a class="navbar-brand brand-mark" href="{{ url_for('pages.dashboard') }}">
-                <span class="brand-icon"><i class="bi bi-box-seam-fill"></i></span>
-                <span>InteliEsteira</span>
+    <nav class="main-navbar 
+        {% if request.endpoint == 'pages.dashboard' %}
+        theme-dashboard{% elif request.endpoint == 'pages.connection' %}
+        theme-connection{% elif request.endpoint == 'pages.production' %}
+        theme-production{% endif %}" aria-label="Navegação principal">
+        <div class="navbar-container">
+            <a class="nav-item theme-dashboard {% if request.endpoint == 'pages.dashboard' %}active{% endif %}"
+               href="{{ url_for('pages.dashboard') }}"
+               {% if request.endpoint == 'pages.dashboard' %}aria-current="page"{% endif %}>
+                <i class="bi bi-grid-1x2-fill" aria-hidden="true"></i>
+                <span>Dashboard</span>
             </a>
-            <button 
-                class="navbar-toggler" 
-                type="button" data-bs-toggle="collapse" data-bs-target="#main-navigation" 
-                aria-controls="main-navigation">
-                <i class="bi bi-list"></i>
-            </button>
-            <div class="collapse navbar-collapse" id="main-navigation">
-                <ul class="navbar-nav ms-auto gap-lg-2">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'pages.dashboard' %}active{% endif %}" href="{{ url_for('pages.dashboard') }}">
-                            <i class="bi bi-grid-1x2-fill"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'pages.connection' %}active{% endif %}" href="{{ url_for('pages.connection') }}">
-                            <i class="bi bi-usb-plug-fill"></i> Conexão
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'pages.production' %}active{% endif %}" href="{{ url_for('pages.production') }}">
-                            <i class="bi bi-box-seam-fill"></i> Linha de produção
-                        </a>
-                    </li>
-                </ul>
-            </div>
+            <a class="nav-item theme-connection {% if request.endpoint == 'pages.connection' %}active{% endif %}"
+               href="{{ url_for('pages.connection') }}"
+               {% if request.endpoint == 'pages.connection' %}aria-current="page"{% endif %}>
+                <i class="bi bi-usb-plug-fill" aria-hidden="true"></i>
+                <span>Conexão</span>
+            </a>
+            <a class="nav-item theme-production {% if request.endpoint == 'pages.production' %}active{% endif %}"
+               href="{{ url_for('pages.production') }}"
+               {% if request.endpoint == 'pages.production' %}aria-current="page"{% endif %}>
+                <i class="bi bi-basket2-fill" aria-hidden="true"></i>
+                <span>Linha de produção</span>
+            </a>
         </div>
     </nav>
 
