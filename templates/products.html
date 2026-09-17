@@ -1,0 +1,342 @@
+{% extends "layout.html" %}
+
+{% block title %}InteliEsteira | Produtos{% endblock %}
+
+{% block head %}
+<style>
+    h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        font-weight: 800;
+        letter-spacing: -0.06em;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+    }
+
+    .eyebrow,
+    .small-label {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .surface-panel {
+        height: 100%;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+        box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
+    }
+
+    .panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 22px;
+    }
+
+    .form-label {
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 700;
+    }
+
+    .form-control,
+    .form-select {
+        border-color: var(--line);
+        border-radius: 8px;
+    }
+
+    .btn-primary {
+        border-color: #7467a8;
+        background: #7467a8;
+    }
+
+    .btn-primary:hover {
+        border-color: #5d518e;
+        background: #5d518e;
+    }
+
+    .products-table th {
+        color: var(--muted);
+        font-size: 0.7rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .products-table td {
+        vertical-align: middle;
+        color: var(--ink);
+        font-size: 0.85rem;
+    }
+
+    .status-pill {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: #e2f4e5;
+        color: var(--green);
+        font-size: 0.7rem;
+        font-weight: 800;
+    }
+
+    .status-pill.inactive {
+        background: #eceff0;
+        color: var(--muted);
+    }
+
+    .feedback {
+        min-height: 46px;
+        margin-top: 18px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f7f9f8;
+        color: var(--muted);
+        font-size: 0.8rem;
+    }
+
+    .feedback.success {
+        border-color: #b9dfc4;
+        background: #edf8f0;
+        color: #287647;
+    }
+
+    .feedback.error {
+        border-color: #f1c0ba;
+        background: #fff0ee;
+        color: #b23f34;
+    }
+
+    .empty-state {
+        padding: 42px 20px;
+        color: var(--muted);
+        text-align: center;
+    }
+
+    .product-actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="dashboard-container py-4 py-lg-5">
+    <header class="mb-4">
+        <p class="eyebrow mb-2">Catálogo de roteamento</p>
+        <h1>Produtos</h1>
+    </header>
+
+    <section class="row g-3" aria-label="Cadastro de produtos">
+        <div class="col-12 col-lg-4">
+            <article class="surface-panel">
+                <div class="panel-title">
+                    <h2>Novo produto</h2>
+                </div>
+
+                <form id="product-form">
+                    <label class="form-label" for="new-product-id">Identificador do produto</label>
+                    <input
+                        id="new-product-id"
+                        class="form-control mb-3"
+                        type="text"
+                        maxlength="64"
+                        placeholder="Ex.: PROD-001"
+                        autocomplete="off"
+                        required>
+
+                    <label class="form-label" for="new-product-state">UF de destino</label>
+                    <select id="new-product-state" class="form-select mb-3" required>
+                        <optgroup label="Norte">
+                            <option>AC</option><option>AP</option><option>AM</option>
+                            <option>PA</option><option>RO</option><option>RR</option><option>TO</option>
+                        </optgroup>
+                        <optgroup label="Sul">
+                            <option>PR</option><option>RS</option><option>SC</option>
+                        </optgroup>
+                        <optgroup label="Sudeste">
+                            <option>ES</option><option>MG</option><option>RJ</option><option>SP</option>
+                        </optgroup>
+                        <optgroup label="Nordeste">
+                            <option>AL</option><option>BA</option><option selected>CE</option>
+                            <option>MA</option><option>PB</option><option>PE</option>
+                            <option>PI</option><option>RN</option><option>SE</option>
+                        </optgroup>
+                        <optgroup label="Centro-Oeste">
+                            <option>DF</option><option>GO</option><option>MT</option><option>MS</option>
+                        </optgroup>
+                    </select>
+
+                    <button id="save-product-button" type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i>
+                        Cadastrar produto
+                    </button>
+                </form>
+
+                <div id="product-feedback" class="feedback" role="status" aria-live="polite">
+                    Cadastre o identificador que será gravado no QR Code.
+                </div>
+            </article>
+        </div>
+
+        <div class="col-12 col-lg-8">
+            <article class="surface-panel">
+                <div class="panel-title">
+                    <h2>Produtos cadastrados</h2>
+                    <span id="products-count" class="small-label">0 produtos</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table products-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Identificador</th>
+                                <th>UF</th>
+                                <th>Macrorregião</th>
+                                <th>Status</th>
+                                <th>Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="products-table-body">
+                            <tr>
+                                <td colspan="5" class="empty-state">Carregando produtos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function apiRequest(url, options = {}) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.erro?.mensagem || `Falha HTTP ${response.status}.`);
+        }
+        return data;
+    }
+
+    function setProductFeedback(message, type = "neutral") {
+        const $feedback = $("#product-feedback");
+        $feedback.removeClass("success error");
+        if (type === "success" || type === "error") {
+            $feedback.addClass(type);
+        }
+        $feedback.text(message);
+    }
+
+    function renderProducts(products) {
+        const $body = $("#products-table-body").empty();
+        $("#products-count").text(`${products.length} produto${products.length === 1 ? "" : "s"}`);
+
+        if (!products.length) {
+            $body.append(
+                $("<tr>").append(
+                    $("<td>", { colspan: 5, class: "empty-state" })
+                        .text("Nenhum produto cadastrado.")
+                )
+            );
+            return;
+        }
+
+        products.forEach((product) => {
+            const $status = $("<span>", { class: "status-pill" })
+                .toggleClass("inactive", !product.ativo)
+                .text(product.ativo ? "Ativo" : "Inativo");
+            const $action = $("<button>", {
+                type: "button",
+                class: `btn btn-sm ${product.ativo ? "btn-outline-secondary" : "btn-outline-success"}`,
+                text: product.ativo ? "Desativar" : "Ativar"
+            }).on("click", () => toggleProduct(product));
+            const qrUrl = `{{ url_for('api.list_products') }}/${encodeURIComponent(product.id)}/qrcode`;
+            const $qrAction = $("<a>", {
+                class: "btn btn-sm btn-outline-primary",
+                href: `${qrUrl}?download=1`,
+                text: "Baixar QR",
+                title: `Baixar QR Code de ${product.id}`
+            });
+            const $actions = $("<div>", { class: "product-actions" })
+                .append($qrAction, $action);
+
+            $body.append(
+                $("<tr>").append(
+                    $("<td>").append($("<strong>").text(product.id)),
+                    $("<td>").text(product.uf),
+                    $("<td>").text(product.macroregiao.replace("_", "-")),
+                    $("<td>").append($status),
+                    $("<td>").append($actions)
+                )
+            );
+        });
+    }
+
+    async function loadProducts() {
+        const data = await apiRequest("{{ url_for('api.list_products') }}");
+        renderProducts(data.produtos);
+    }
+
+    async function toggleProduct(product) {
+        try {
+            const url = `{{ url_for('api.list_products') }}/${encodeURIComponent(product.id)}`;
+            if (product.ativo) {
+                await apiRequest(url, { method: "DELETE" });
+            } else {
+                await apiRequest(url, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ativo: true })
+                });
+            }
+            setProductFeedback(
+                `${product.id} ${product.ativo ? "desativado" : "ativado"}.`,
+                "success"
+            );
+            await loadProducts();
+        } catch (error) {
+            setProductFeedback(error.message, "error");
+        }
+    }
+
+    $(function () {
+        loadProducts().catch((error) => setProductFeedback(error.message, "error"));
+
+        $("#product-form").on("submit", async function (event) {
+            event.preventDefault();
+            const productId = $("#new-product-id").val().trim();
+            const state = $("#new-product-state").val();
+            try {
+                $("#save-product-button").prop("disabled", true);
+                await apiRequest("{{ url_for('api.create_product') }}", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ produto_id: productId, uf: state })
+                });
+                setProductFeedback(
+                    `${productId} cadastrado com destino ${state}. Use Baixar QR para gerar a etiqueta.`,
+                    "success"
+                );
+                $("#new-product-id").val("").trigger("focus");
+                await loadProducts();
+            } catch (error) {
+                setProductFeedback(error.message, "error");
+            } finally {
+                $("#save-product-button").prop("disabled", false);
+            }
+        });
+    });
+</script>
+{% endblock %}

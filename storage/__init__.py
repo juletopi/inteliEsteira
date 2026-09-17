@@ -1,0 +1,1 @@
+"""Persistencia SQLite do InteliEsteira."""

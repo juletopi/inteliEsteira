@@ -61,6 +61,11 @@
         line-height: 1;
     }
 
+    .metric-value.metric-state {
+        font-size: clamp(1rem, 2vw, 1.45rem);
+        overflow-wrap: anywhere;
+    }
+
     .metric-card .metric-label {
         display: block;
         margin-top: 8px;
@@ -148,6 +153,35 @@
         align-items: stretch;
     }
 
+    .simulation-form {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .form-help {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.72rem;
+    }
+
+    .simulation-form .form-label {
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .simulation-form .form-control,
+    .simulation-form .form-select {
+        border-color: var(--line);
+        border-radius: 8px;
+    }
+
     .control-actions {
         display: flex;
         align-items: flex-start;
@@ -183,10 +217,81 @@
         color: var(--muted);
         font-size: 0.75rem;
         font-weight: 700;
+        overflow: hidden;
     }
 
     .camera-placeholder i {
         font-size: 1.5rem;
+    }
+
+    .camera-image {
+        width: 100%;
+        min-height: 94px;
+        max-height: 180px;
+        object-fit: cover;
+    }
+
+    .camera-placeholder-content {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 18px;
+    }
+
+    .operation-feedback {
+        min-height: 46px;
+        margin-top: 16px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f7f9f8;
+        color: var(--muted);
+        font-size: 0.8rem;
+    }
+
+    .operation-feedback.success {
+        border-color: #b9dfc4;
+        background: #edf8f0;
+        color: #287647;
+    }
+
+    .operation-feedback.error {
+        border-color: #f1c0ba;
+        background: #fff0ee;
+        color: #b23f34;
+    }
+
+    .current-cycle {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-bottom: 18px;
+    }
+
+    .cycle-field {
+        min-width: 0;
+        padding: 10px 12px;
+        border-radius: 9px;
+        background: #f3f6f5;
+    }
+
+    .cycle-field span,
+    .cycle-field strong {
+        display: block;
+    }
+
+    .cycle-field span {
+        color: var(--muted);
+        font-size: 0.64rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .cycle-field strong {
+        margin-top: 5px;
+        overflow-wrap: anywhere;
+        font-size: 0.8rem;
     }
 
     .inventory-items {
@@ -215,6 +320,8 @@
         .dashboard-container { width: min(100% - 24px, 1180px); }
         .surface-panel { padding: 18px; }
         .control-row, .inventory-items { display: block; }
+        .simulation-form { grid-template-columns: 1fr; }
+        .current-cycle { grid-template-columns: repeat(2, 1fr); }
         .camera-placeholder { margin-top: 16px; }
         .inventory-items span { margin-top: 12px; }
     }
@@ -249,8 +356,8 @@
                     <i class="bi bi-boxes"></i>
                 </div>
                 <div>
-                    <span class="metric-value" id="packages-count">7</span>
-                    <span class="metric-label">Pacotes na<br>linha de prod.</span>
+                    <span class="metric-value" id="packages-count">0</span>
+                    <span class="metric-label">Ciclos concluídos<br>no histórico</span>
                 </div>
             </article>
         </div>
@@ -260,8 +367,8 @@
                     <i class="bi bi-stopwatch-fill"></i>
                 </div>
                 <div>
-                    <span class="metric-value" id="running-time">1 min. 37s</span>
-                    <span class="metric-label">Esteira rodando</span>
+                    <span class="metric-value metric-state" id="system-state-metric">IDLE</span>
+                    <span class="metric-label">Estado do sistema</span>
                 </div>
             </article>
         </div>
@@ -283,13 +390,13 @@
                 </div>
                 <div class="device-status">
                     <span>Webcam</span>
-                    <span class="badge-status badge-offline">Desconectado</span>
+                    <span id="camera-status" class="badge-status badge-offline">Desconectado</span>
                 </div>
-                <div class="alert alert-warning mt-4 mb-0">
+                <div id="system-alert" class="alert alert-warning mt-4 mb-0 d-none">
                     <i class="bi bi-exclamation-triangle-fill"></i>
                     <span>
                         <strong>Aviso</strong><br>
-                        Verifique a conexão da webcam.
+                        <span id="system-alert-message">Falha operacional.</span>
                     </span>
                 </div>
             </article>
@@ -300,31 +407,74 @@
                     <h2>Linha de produção</h2>
                 </div>
                 <div class="row g-2 production-list mb-4">
-                    <div class="col-6 col-xl-3">
+                    <div class="col-6 col-xl">
                         <div class="production-card">
                             <span>Norte</span>
-                            <strong>Rondônia</strong>
+                            <strong>R01 • R02</strong>
                         </div>
                     </div>
-                    <div class="col-6 col-xl-3">
+                    <div class="col-6 col-xl">
                         <div class="production-card">
                             <span>Sul</span>
-                            <strong>Rio Grande do Sul</strong>
+                            <strong>R03 • R04</strong>
                         </div>
                     </div>
-                    <div class="col-6 col-xl-3">
+                    <div class="col-6 col-xl">
+                        <div class="production-card">
+                            <span>Sudeste</span>
+                            <strong>R05 • R06</strong>
+                        </div>
+                    </div>
+                    <div class="col-6 col-xl">
                         <div class="production-card">
                             <span>Nordeste</span>
-                            <strong>Ceará</strong>
+                            <strong>R07 • R08</strong>
                         </div>
                     </div>
-                    <div class="col-6 col-xl-3">
+                    <div class="col-6 col-xl">
                         <div class="production-card">
-                            <span>Sul</span>
-                            <strong>Paraná</strong>
+                            <span>Centro-Oeste</span>
+                            <strong>R09 • R10</strong>
                         </div>
                     </div>
                 </div>
+
+                <div id="simulation-input" class="simulation-form" aria-label="Entrada manual do QR Code">
+                    <div>
+                        <label class="form-label" for="product-id">Identificador do produto</label>
+                        <input
+                            id="product-id"
+                            class="form-control"
+                            type="text"
+                            maxlength="64"
+                            placeholder="Ex.: PROD-001"
+                            autocomplete="off">
+                        <span id="product-input-help" class="form-help">
+                            O QR simulado contém apenas esse identificador. A UF vem do
+                            <a href="{{ url_for('pages.products') }}">cadastro de produtos</a>.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="current-cycle" aria-label="Dados do ciclo atual">
+                    <div class="cycle-field">
+                        <span>Produto</span>
+                        <strong id="current-product">—</strong>
+                    </div>
+                    <div class="cycle-field">
+                        <span>UF</span>
+                        <strong id="current-state">—</strong>
+                    </div>
+                    <div class="cycle-field">
+                        <span>Macrorregião</span>
+                        <strong id="current-macroregion">—</strong>
+                    </div>
+                    <div class="cycle-field">
+                        <span>Destino</span>
+                        <strong id="current-destination">—</strong>
+                    </div>
+                </div>
+
                 <div class="control-row">
                     <div class="control-actions">
                         <button
@@ -347,11 +497,24 @@
                             class="btn btn-outline-secondary">
                             <i class="bi bi-stop-fill"></i>Stop
                         </button>
+
+                        <button
+                            type="button"
+                            id="reset-button"
+                            class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-counterclockwise"></i>Reset
+                        </button>
                     </div>
-                    <div class="camera-placeholder">
-                        <i class="bi bi-camera-video-fill"></i>
-                        <span>Webcam offline</span>
+                    <div id="camera-preview" class="camera-placeholder">
+                        <img id="camera-image" class="camera-image d-none" alt="Preview da webcam">
+                        <div id="camera-placeholder-content" class="camera-placeholder-content">
+                            <i class="bi bi-camera-video-fill"></i>
+                            <span>Webcam simulada</span>
+                        </div>
                     </div>
+                </div>
+                <div id="operation-feedback" class="operation-feedback" role="status" aria-live="polite">
+                    Informe um produto cadastrado para validar ou executar um ciclo.
                 </div>
             </article>
         </div>
@@ -362,37 +525,212 @@
 
 {% block scripts %}
 <script>
-    function setStatusBadge(selector, isConnected) {
+    let currentCameraMode = "mock";
+    let currentCameraConnected = false;
+    let processing = false;
+
+    function setStatusBadge(selector, isConnected, connectedText = "Conectado") {
         const $badge = $(selector);
         
-        $badge.text(isConnected ? "Conectado" : "Desconectado");
+        $badge.text(isConnected ? connectedText : "Desconectado");
         $badge.toggleClass("badge-offline", !isConnected);
     }
 
-    async function updateStatus() {
-        const response = await fetch("{{ url_for('api.status') }}");
-        const data = await response.json();
+    function setFeedback(message, type = "neutral") {
+        const $feedback = $("#operation-feedback");
+        $feedback.removeClass("success error");
+        if (type === "success" || type === "error") {
+            $feedback.addClass(type);
+        }
+        $feedback.text(message);
+    }
 
-        setStatusBadge("#gripper-status", data.garra !== "desconectada");
-        setStatusBadge("#conveyor-status", data.esteira !== "desconectada");
+    function buildPayload() {
+        const productId = $("#product-id").val().trim();
+        if (!productId) {
+            throw new Error("Informe o identificador do produto.");
+        }
+
+        return {
+            qr_code: JSON.stringify({ produto_id: productId }),
+            ocupacao: {},
+            indisponiveis: []
+        };
+    }
+
+    function buildCyclePayload() {
+        if (currentCameraMode === "opencv") {
+            return { ocupacao: {}, indisponiveis: [] };
+        }
+        return buildPayload();
+    }
+
+    async function apiRequest(url, options = {}) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.erro?.mensagem || `Falha HTTP ${response.status}.`);
+        }
+        return data;
+    }
+
+    function setProcessing(active) {
+        processing = active;
+        $("#check-button, #start-button, #reset-button").prop("disabled", active);
+        if (active) {
+            $("#camera-image").addClass("d-none");
+            $("#camera-placeholder-content").removeClass("d-none");
+            $("#camera-placeholder-content span").text("Processando QR Code...");
+        } else {
+            updateCameraPanel(currentCameraConnected);
+        }
+    }
+
+    function updateCameraPanel(cameraConnected) {
+        const realCamera = currentCameraMode === "opencv";
+        const $image = $("#camera-image");
+        const $placeholder = $("#camera-placeholder-content");
+
+        if (!realCamera) {
+            $image.addClass("d-none").removeAttr("src");
+            $placeholder.removeClass("d-none");
+            $placeholder.find("span").text("Webcam simulada");
+            $("#product-input-help").text(
+                "O QR simulado contém esse identificador; a UF vem do cadastro de produtos."
+            );
+            return;
+        }
+
+        $("#product-input-help").text(
+            "Este campo serve ao Check manual. Ao executar, o QR será lido diretamente pela webcam."
+        );
+        if (!cameraConnected || processing) {
+            $image.addClass("d-none");
+            $placeholder.removeClass("d-none");
+            $placeholder.find("span").text(
+                cameraConnected ? "Lendo QR Code..." : "Webcam indisponível"
+            );
+            return;
+        }
+
+        $image.off("load.preview error.preview")
+            .one("load.preview", function () {
+                $placeholder.addClass("d-none");
+                $image.removeClass("d-none");
+            })
+            .one("error.preview", function () {
+                $image.addClass("d-none");
+                $placeholder.removeClass("d-none").find("span").text("Preview indisponível");
+            })
+            .attr("src", `{{ url_for('api.camera_frame') }}?t=${Date.now()}`);
+    }
+
+    async function updateStatus() {
+        const data = await apiRequest("{{ url_for('api.status') }}");
+        const arduinoConnected = Boolean(data.arduino);
+        const cameraConnected = Boolean(data.camera);
+        currentCameraConnected = cameraConnected;
+        currentCameraMode = data.camera_modo || "mock";
+        const connectedComponents = (arduinoConnected ? 2 : 0) + (cameraConnected ? 1 : 0);
+
+        setStatusBadge("#gripper-status", arduinoConnected, data.garra || "Conectado");
+        setStatusBadge("#conveyor-status", arduinoConnected, data.esteira || "Conectado");
+        setStatusBadge("#camera-status", cameraConnected);
+        updateCameraPanel(cameraConnected);
+        $("#connected-components").text(connectedComponents);
+        $("#packages-count").text(data.total_ciclos || 0);
+        $("#system-state-metric").text(data.estado || "DESCONHECIDO");
+        $("#current-product").text(data.produto || "—");
+        $("#current-state").text(data.uf || "—");
+        $("#current-macroregion").text(data.macroregiao || "—");
+        $("#current-destination").text(data.destino || "—");
+
+        if (data.erro) {
+            $("#system-alert-message").text(data.erro.mensagem);
+            $("#system-alert").removeClass("d-none");
+        } else {
+            $("#system-alert").addClass("d-none");
+        }
     }
 
     $(function () {
-        updateStatus().catch(() => {
+        updateStatus().catch((error) => {
+            setFeedback(error.message, "error");
         });
 
-        $("#start-button").on("click", function () {
-            $("#conveyor-status").text("Conectado").removeClass("badge-offline");
+        $("#check-button").on("click", async function () {
+            try {
+                setProcessing(true);
+                const data = await apiRequest("{{ url_for('api.resolve_route') }}", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(buildPayload())
+                });
+                setFeedback(
+                    `${data.produto.id}: ${data.macroregiao} → ${data.destino}`,
+                    "success"
+                );
+                $("#current-product").text(data.produto.id);
+                $("#current-state").text(data.produto.uf);
+                $("#current-macroregion").text(data.macroregiao);
+                $("#current-destination").text(data.destino);
+            } catch (error) {
+                setFeedback(error.message, "error");
+            } finally {
+                setProcessing(false);
+            }
         });
 
-        $("#stop-button").on("click", function () {
-            $("#conveyor-status").text("Parada").addClass("badge-offline");
+        $("#start-button").on("click", async function () {
+            try {
+                setProcessing(true);
+                setFeedback(
+                    currentCameraMode === "opencv"
+                        ? "Executando o ciclo e aguardando a leitura pela webcam..."
+                        : "Executando o ciclo simulado..."
+                );
+                const data = await apiRequest("{{ url_for('api.process_cycle') }}", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(buildCyclePayload())
+                });
+                setFeedback(
+                    `Ciclo ${data.ciclo_id} finalizado: ${data.macroregiao} → ${data.destino}.`,
+                    "success"
+                );
+            } catch (error) {
+                setFeedback(error.message, "error");
+            } finally {
+                setProcessing(false);
+                await updateStatus().catch(() => {});
+            }
         });
 
-        $(".nav-link").on("click", function () {
-            $(".nav-link").removeClass("active");
-            $(this).addClass("active");
+        $("#stop-button").on("click", async function () {
+            try {
+                await apiRequest("{{ url_for('api.stop_system') }}", { method: "POST" });
+                setFeedback("Sistema parado pelo operador.", "success");
+            } catch (error) {
+                setFeedback(error.message, "error");
+            } finally {
+                await updateStatus().catch(() => {});
+            }
         });
+
+        $("#reset-button").on("click", async function () {
+            try {
+                setProcessing(true);
+                await apiRequest("{{ url_for('api.reset_system') }}", { method: "POST" });
+                setFeedback("Sistema resetado e pronto para um novo ciclo.", "success");
+            } catch (error) {
+                setFeedback(error.message, "error");
+            } finally {
+                setProcessing(false);
+                await updateStatus().catch(() => {});
+            }
+        });
+
+        window.setInterval(() => updateStatus().catch(() => {}), 1500);
     });
 </script>
 {% endblock %}

@@ -68,6 +68,11 @@
         color: #a45e21;
     }
 
+    .status-pill.error {
+        background: #ffe6e2;
+        color: #dd5647;
+    }
+
     .empty-state {
         padding: 48px 20px;
         color: var(--muted);
@@ -98,12 +103,12 @@
                         <th>Processado em</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="history-table-body">
                     <tr>
                         <td colspan="5">
                             <div class="empty-state">
                                 <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
-                                Nenhum produto registrado nesta sessão.
+                                Nenhum produto registrado no histórico.
                             </div>
                         </td>
                     </tr>
@@ -112,4 +117,76 @@
         </div>
     </section>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function formatDate(value) {
+        if (!value) return "—";
+        return new Intl.DateTimeFormat("pt-BR", {
+            dateStyle: "short",
+            timeStyle: "medium"
+        }).format(new Date(value));
+    }
+
+    function renderHistory(cycles) {
+        const $body = $("#history-table-body").empty();
+        if (!cycles.length) {
+            $body.append(
+                $("<tr>").append(
+                    $("<td>", { colspan: 5 }).append(
+                        $("<div>", { class: "empty-state" }).text(
+                            "Nenhum produto registrado no histórico."
+                        )
+                    )
+                )
+            );
+            return;
+        }
+
+        cycles.forEach((cycle) => {
+            const isFinished = cycle.estado === "FINALIZADO";
+            const isError = cycle.estado === "ERRO";
+            const $status = $("<span>", { class: "status-pill" })
+                .toggleClass("pending", !isFinished && !isError)
+                .toggleClass("error", isError)
+                .text(cycle.estado);
+            const destination = cycle.destino
+                ? `${cycle.macroregiao} → ${cycle.destino}`
+                : "—";
+
+            $body.append(
+                $("<tr>").append(
+                    $("<td>").text(cycle.produto_id || "Não identificado"),
+                    $("<td>").text(cycle.qr_code || "—"),
+                    $("<td>").text(destination),
+                    $("<td>").append($status),
+                    $("<td>").text(formatDate(cycle.finalizado_em || cycle.iniciado_em))
+                )
+            );
+        });
+    }
+
+    async function loadHistory() {
+        const response = await fetch("{{ url_for('api.list_cycles') }}?limit=100");
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.erro?.mensagem || "Não foi possível carregar o histórico.");
+        }
+        renderHistory(data.ciclos);
+    }
+
+    $(function () {
+        loadHistory().catch((error) => {
+            $("#history-table-body").html(
+                $("<tr>").append(
+                    $("<td>", { colspan: 5 }).append(
+                        $("<div>", { class: "empty-state" }).text(error.message)
+                    )
+                )
+            );
+        });
+        window.setInterval(() => loadHistory().catch(() => {}), 5000);
+    });
+</script>
 {% endblock %}

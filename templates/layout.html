@@ -97,6 +97,10 @@
             background: var(--orange);
         }
 
+        .main-navbar.theme-products .nav-item.active {
+            background: #7467a8;
+        }
+
         .main-navbar .nav-item.active,
         .main-navbar .nav-item.active i {
             color: white;
@@ -132,6 +136,11 @@
         .navbar-container:hover .nav-item.theme-production.active,
         .navbar-container:hover .nav-item.theme-production.active i {
             color: var(--orange);
+        }
+
+        .navbar-container:hover .nav-item.theme-products.active,
+        .navbar-container:hover .nav-item.theme-products.active i {
+            color: #7467a8;
         }
 
         .navbar-container:hover .nav-item.active {
@@ -178,7 +187,8 @@
         {% if request.endpoint == 'pages.dashboard' %}
         theme-dashboard{% elif request.endpoint == 'pages.connection' %}
         theme-connection{% elif request.endpoint == 'pages.production' %}
-        theme-production{% endif %}" aria-label="Navegação principal">
+        theme-production{% elif request.endpoint == 'pages.products' %}
+        theme-products{% endif %}" aria-label="Navegação principal">
         <div class="navbar-container">
             <a class="nav-item theme-dashboard {% if request.endpoint == 'pages.dashboard' %}active{% endif %}"
                href="{{ url_for('pages.dashboard') }}"
@@ -197,6 +207,12 @@
                {% if request.endpoint == 'pages.production' %}aria-current="page"{% endif %}>
                 <i class="bi bi-basket2-fill" aria-hidden="true"></i>
                 <span>Linha de produção</span>
+            </a>
+            <a class="nav-item theme-products {% if request.endpoint == 'pages.products' %}active{% endif %}"
+               href="{{ url_for('pages.products') }}"
+               {% if request.endpoint == 'pages.products' %}aria-current="page"{% endif %}>
+                <i class="bi bi-upc-scan" aria-hidden="true"></i>
+                <span>Produtos</span>
             </a>
         </div>
     </nav>

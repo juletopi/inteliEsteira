@@ -14,6 +14,11 @@ def production():
     return render_template("production.html")
 
 
+@pages_bp.get("/produtos")
+def products():
+    return render_template("products.html")
+
+
 @pages_bp.get("/conexao")
 def connection():
     return render_template("connection.html")
