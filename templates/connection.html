@@ -93,6 +93,42 @@
         border-color: #0d6f74;
         background: #0d6f74;
     }
+
+    .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .connection-feedback,
+    .ports-list {
+        margin-top: 18px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f7f9f8;
+        color: var(--muted);
+        font-size: 0.8rem;
+    }
+
+    .connection-feedback.success {
+        border-color: #b9dfc4;
+        background: #edf8f0;
+        color: #287647;
+    }
+
+    .connection-feedback.error {
+        border-color: #f1c0ba;
+        background: #fff0ee;
+        color: #b23f34;
+    }
+
+    .config-note {
+        display: block;
+        margin: -6px 0 16px;
+        color: var(--muted);
+        font-size: 0.72rem;
+    }
 </style>
 {% endblock %}
 
@@ -116,7 +152,7 @@
                         Garra
                         <small>Controlador de movimento</small>
                     </div>
-                    <span class="badge-status">Aguardando API</span>
+                    <span id="gripper-connection-status" class="badge-status badge-offline">Consultando</span>
                 </div>
 
                 <div class="device-row">
@@ -124,7 +160,7 @@
                         Esteira
                         <small>Motor e sensores</small>
                     </div>
-                    <span class="badge-status">Aguardando API</span>
+                    <span id="conveyor-connection-status" class="badge-status badge-offline">Consultando</span>
                 </div>
 
                 <div class="device-row">
@@ -132,7 +168,11 @@
                         Câmera
                         <small>Captura e leitura de QR Code</small>
                     </div>
-                    <span class="badge-status badge-offline">Não configurada</span>
+                    <span id="camera-connection-status" class="badge-status badge-offline">Consultando</span>
+                </div>
+
+                <div id="connection-feedback" class="connection-feedback" role="status" aria-live="polite">
+                    Consultando os componentes configurados.
                 </div>
             </article>
         </div>
@@ -144,13 +184,27 @@
                     <span class="small-label">Preparação</span>
                 </div>
 
-                <form>
+                <form onsubmit="return false;">
+                    <label class="form-label" for="hardware-mode">Modo do Arduino</label>
+                    <input
+                        id="hardware-mode"
+                        class="form-control mb-3"
+                        type="text"
+                        readonly>
+
                     <label class="form-label" for="arduino-port">Porta do Arduino</label>
                     <input
                         id="arduino-port"
                         class="form-control mb-3"
                         type="text"
-                        value="COM3">
+                        readonly>
+
+                    <label class="form-label" for="arduino-baudrate">Velocidade serial</label>
+                    <input
+                        id="arduino-baudrate"
+                        class="form-control mb-3"
+                        type="text"
+                        readonly>
 
                     <label class="form-label" for="camera-index">Índice da câmera</label>
                     <input
@@ -158,15 +212,126 @@
                         class="form-control mb-3"
                         type="number"
                         min="0"
-                        value="0">
+                        readonly>
 
-                    <button type="button" class="btn btn-primary">
-                        <i class="bi bi-save2"></i>
-                        Salvar configuração
-                    </button>
+                    <label class="form-label" for="camera-mode">Modo da câmera</label>
+                    <input
+                        id="camera-mode"
+                        class="form-control mb-3"
+                        type="text"
+                        readonly>
+
+                    <span class="config-note">
+                        Altere esses valores pelas variáveis de ambiente e reinicie o servidor.
+                    </span>
+
+                    <div class="actions">
+                        <button id="connect-components-button" type="button" class="btn btn-primary">
+                            <i class="bi bi-usb-plug"></i>
+                            Tentar conectar
+                        </button>
+                        <button id="refresh-ports-button" type="button" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-clockwise"></i>
+                            Listar portas
+                        </button>
+                    </div>
                 </form>
+
+                <div id="ports-list" class="ports-list">Portas ainda não consultadas.</div>
             </article>
         </div>
     </section>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function apiRequest(url, options = {}) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.erro?.mensagem || `Falha HTTP ${response.status}.`);
+        }
+        return data;
+    }
+
+    function setBadge(selector, connected) {
+        $(selector)
+            .text(connected ? "Conectado" : "Desconectado")
+            .toggleClass("badge-offline", !connected);
+    }
+
+    function setFeedback(message, type = "neutral") {
+        $("#connection-feedback")
+            .removeClass("success error")
+            .addClass(type === "success" || type === "error" ? type : "")
+            .text(message);
+    }
+
+    async function loadStatus() {
+        const status = await apiRequest("{{ url_for('api.status') }}");
+        setBadge("#gripper-connection-status", Boolean(status.arduino));
+        setBadge("#conveyor-connection-status", Boolean(status.arduino));
+        setBadge("#camera-connection-status", Boolean(status.camera));
+        $("#hardware-mode").val(status.hardware_modo || "desconhecido");
+        $("#arduino-port").val(status.arduino_porta || "Não aplicável");
+        $("#arduino-baudrate").val(status.arduino_baudrate || "Não aplicável");
+        $("#camera-index").val(status.camera_indice ?? "");
+        $("#camera-mode").val(status.camera_modo || "desconhecido");
+        return status;
+    }
+
+    async function loadPorts() {
+        const data = await apiRequest("{{ url_for('api.hardware_ports') }}");
+        const $list = $("#ports-list").empty();
+        if (!data.portas.length) {
+            $list.text("Nenhuma porta serial detectada neste computador.");
+            return;
+        }
+        data.portas.forEach((port) => {
+            $list.append(
+                $("<div>").append(
+                    $("<strong>").text(port.porta),
+                    document.createTextNode(` — ${port.descricao}`)
+                )
+            );
+        });
+    }
+
+    $(function () {
+        loadStatus()
+            .then((status) => setFeedback(
+                status.arduino && status.camera
+                    ? "Todos os componentes configurados estão conectados."
+                    : "Há componentes desconectados. Confira a porta e tente novamente.",
+                status.arduino && status.camera ? "success" : "neutral"
+            ))
+            .catch((error) => setFeedback(error.message, "error"));
+
+        $("#connect-components-button").on("click", async function () {
+            try {
+                $(this).prop("disabled", true);
+                await apiRequest("{{ url_for('api.connect_system') }}", { method: "POST" });
+                await loadStatus();
+                setFeedback("Componentes conectados com sucesso.", "success");
+            } catch (error) {
+                setFeedback(error.message, "error");
+                await loadStatus().catch(() => {});
+            } finally {
+                $(this).prop("disabled", false);
+            }
+        });
+
+        $("#refresh-ports-button").on("click", async function () {
+            try {
+                $(this).prop("disabled", true);
+                await loadPorts();
+            } catch (error) {
+                $("#ports-list").text(error.message);
+            } finally {
+                $(this).prop("disabled", false);
+            }
+        });
+    });
+</script>
 {% endblock %}
