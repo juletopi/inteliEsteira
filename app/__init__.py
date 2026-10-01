@@ -30,6 +30,7 @@ def _configure_controller(app):
     from core.state import SystemState
     from hardware.arduino import ArduinoError
     from hardware.conveyor import Conveyor
+    from hardware.ev3_adapter import EV3Adapter
     from hardware.gripper import Gripper
     from hardware.mock import MockArduino
     from hardware.serial_adapter import SerialArduino
@@ -64,6 +65,26 @@ def _configure_controller(app):
             "HARDWARE_MODE deve ser 'mock' ou 'serial'. "
             f"Valor recebido: {hardware_mode!r}."
         )
+    conveyor_mode = str(app.config.get("CONVEYOR_MODE", "arduino")).strip().lower()
+    if conveyor_mode == "arduino":
+        conveyor_device = arduino
+    elif conveyor_mode == "mock":
+        conveyor_device = MockArduino()
+        conveyor_device.connect()
+    elif conveyor_mode == "ev3":
+        conveyor_device = EV3Adapter(
+            host=app.config.get("EV3_HOST", ""),
+            port=app.config.get("EV3_PORT", 8765),
+            token=app.config.get("EV3_TOKEN", ""),
+            connect_timeout=app.config.get("EV3_CONNECT_TIMEOUT", 2.0),
+        )
+        # Conecta pela tela/API ou no preflight do ciclo; iniciar Flask nao move nada.
+        atexit.register(conveyor_device.disconnect)
+    else:
+        raise RuntimeError(
+            "CONVEYOR_MODE deve ser 'arduino', 'mock' ou 'ev3'. "
+            f"Valor recebido: {conveyor_mode!r}."
+        )
     camera_mode = str(app.config.get("CAMERA_MODE", "mock")).strip().lower()
     if camera_mode == "mock":
         camera = MockQRCodeCamera()
@@ -83,17 +104,18 @@ def _configure_controller(app):
     controller = SystemController(
         state=SystemState(),
         gripper=Gripper(arduino),
-        conveyor=Conveyor(arduino),
+        conveyor=Conveyor(conveyor_device),
         camera=camera,
         product_repository=products,
         cycle_repository=cycles,
         command_timeout=app.config.get("COMMAND_TIMEOUT", 2.0),
-        arrival_timeout=app.config.get("ARRIVAL_TIMEOUT", 5.0),
+        arrival_timeout=app.config.get("ARRIVAL_TIMEOUT", 35.0),
         command_retries=app.config.get("COMMAND_RETRIES", 1),
     )
 
     app.extensions["system_controller"] = controller
     app.extensions["arduino"] = arduino
+    app.extensions["conveyor_device"] = conveyor_device
     app.extensions["camera"] = camera
     app.extensions["database"] = database
     app.extensions["product_repository"] = products

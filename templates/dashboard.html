@@ -628,13 +628,14 @@
     async function updateStatus() {
         const data = await apiRequest("{{ url_for('api.status') }}");
         const arduinoConnected = Boolean(data.arduino);
+        const conveyorConnected = Boolean(data.esteira_conectada);
         const cameraConnected = Boolean(data.camera);
         currentCameraConnected = cameraConnected;
         currentCameraMode = data.camera_modo || "mock";
-        const connectedComponents = (arduinoConnected ? 2 : 0) + (cameraConnected ? 1 : 0);
+        const connectedComponents = Number(arduinoConnected) + Number(conveyorConnected) + Number(cameraConnected);
 
         setStatusBadge("#gripper-status", arduinoConnected, data.garra || "Conectado");
-        setStatusBadge("#conveyor-status", arduinoConnected, data.esteira || "Conectado");
+        setStatusBadge("#conveyor-status", conveyorConnected, data.esteira || "Conectado");
         setStatusBadge("#camera-status", cameraConnected);
         updateCameraPanel(cameraConnected);
         $("#connected-components").text(connectedComponents);
