@@ -3,79 +3,19 @@
 {% block title %}InteliEsteira | Dashboard{% endblock %}
 
 {% block head %}
+{% from "components/metric_card.html" import metric_card_styles %}
+{{ metric_card_styles() }}
 <style>
-    h1 {
-        margin: 0;
-        font-size: clamp(2rem, 4vw, 3.2rem);
-        font-weight: 800;
-        letter-spacing: -0.06em;
-    }
-
     h2 {
         margin: 0;
         font-size: 1.05rem;
         font-weight: 800;
     }
 
-    .eyebrow,
-    .small-label,
-    .metric-label {
-        color: var(--muted);
-        font-size: 0.72rem;
-        font-weight: 800;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-    }
-
-    .metric-card {
-        display: flex;
-        align-items: center;
-        gap: 18px;
-        min-height: 132px;
-        padding: 24px;
-        border-radius: 16px;
-        color: white;
-    }
-
-    .metric-card-primary {
-        background: var(--teal);
-    }
-
-    .metric-card-accent {
-        background: var(--orange);
-    }
-
-    .metric-card-dark {
-        background: var(--ink);
-    }
-
-    .metric-icon {
-        font-size: 1.9rem;
-        opacity: 0.8;
-    }
-
-    .metric-value {
-        display: block;
-        font-size: 2rem;
-        font-weight: 800;
-        line-height: 1;
-    }
-
-    .metric-value.metric-state {
-        font-size: clamp(1rem, 2vw, 1.45rem);
-        overflow-wrap: anywhere;
-    }
-
-    .metric-card .metric-label {
-        display: block;
-        margin-top: 8px;
-        color: rgba(255, 255, 255, 0.75);
-    }
-
     .surface-panel {
         padding: 24px;
-        border: 1px solid var(--line);
-        border-radius: 16px;
+        border: 0;
+        border-radius: 6px;
         background: var(--surface);
         box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
     }
@@ -124,9 +64,9 @@
     .production-card {
         min-height: 88px;
         padding: 14px;
-        border: 1px solid var(--line);
+        border: 0;
         border-left: 4px solid var(--orange);
-        border-radius: 10px;
+        border-radius: 6px;
         background: #fbfcfb;
     }
 
@@ -329,48 +269,32 @@
 {% endblock %}
 
 {% block content %}
+{% set page_eyebrow = "Visão geral da operação" %}
+{% set page_title = "Dashboard" %}
+{% from "components/metric_card.html" import metric_card %}
 <main id="dashboard" class="dashboard-container py-4 py-lg-5">
-    <header class="page-heading mb-4">
-        <div>
-            <p class="eyebrow mb-2">Visão geral da operação</p>
-            <h1>Dashboard</h1>
-        </div>
-    </header>
+    {% include "components/page_header.html" with context %}
 
-    <!-- seção mockada -->
     <section class="row g-3 mb-3" aria-label="Indicadores da operação">
         <div class="col-12 col-md-4">
-            <article class="metric-card metric-card-primary h-100">
-                <div class="metric-icon">
-                    <i class="bi bi-cpu-fill"></i>
-                </div>
-                <div>
-                    <span class="metric-value" id="connected-components">3</span>
-                    <span class="metric-label">Componentes<br>conectados</span>
-                </div>
-            </article>
+            {{ metric_card(
+                "primary", "bi-cpu-fill", "connected-components", "3",
+                "Componentes", "conectados", url_for("pages.connection"),
+                "Ver conexão", true
+            ) }}
         </div>
         <div class="col-12 col-md-4">
-            <article id="inventario" class="metric-card metric-card-accent h-100">
-                <div class="metric-icon">
-                    <i class="bi bi-boxes"></i>
-                </div>
-                <div>
-                    <span class="metric-value" id="packages-count">0</span>
-                    <span class="metric-label">Ciclos concluídos<br>no histórico</span>
-                </div>
-            </article>
+            {{ metric_card(
+                "accent", "bi-boxes", "packages-count", "0",
+                "Ciclos concluídos", "no histórico", url_for("pages.production"),
+                "Ver histórico", true
+            ) }}
         </div>
         <div class="col-12 col-md-4">
-            <article class="metric-card metric-card-dark h-100">
-                <div class="metric-icon">
-                    <i class="bi bi-stopwatch-fill"></i>
-                </div>
-                <div>
-                    <span class="metric-value metric-state" id="system-state-metric">IDLE</span>
-                    <span class="metric-label">Estado do sistema</span>
-                </div>
-            </article>
+            {{ metric_card(
+                "dark", "bi-stopwatch-fill", "system-state-metric", "IDLE",
+                "Estado", "do sistema", "", "", false
+            ) }}
         </div>
     </section>
 

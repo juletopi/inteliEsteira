@@ -1,0 +1,171 @@
+{% macro metric_card_styles() %}
+<style>
+    .metric-card {
+        position: relative;
+        display: flex;
+        min-height: 132px;
+        align-items: center;
+        gap: 18px;
+        padding: 24px;
+        overflow: hidden;
+        border-radius: 6px;
+        color: white;
+        text-decoration: none;
+        isolation: isolate;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .metric-card:hover,
+    .metric-card:focus-visible {
+        color: white;
+        transform: translateY(-3px);
+        box-shadow: 0 14px 28px rgba(23, 37, 43, 0.16);
+    }
+
+    .metric-card:focus-visible {
+        outline: 3px solid rgba(255, 255, 255, 0.9);
+        outline-offset: 3px;
+    }
+
+    .metric-card-primary { background: var(--teal); }
+    .metric-card-accent { background: var(--orange); }
+    .metric-card-dark { background: var(--ink); }
+
+    .metric-icon {
+        position: relative;
+        z-index: 1;
+        font-size: 1.9rem;
+        opacity: 0.8;
+        transition: transform 0.5s ease, opacity 0.5s ease;
+    }
+
+    .metric-card:hover .metric-icon,
+    .metric-card:focus-visible .metric-icon {
+        opacity: 1;
+        transform: translateY(-3px) scale(1.08);
+    }
+
+    .metric-value {
+        position: relative;
+        z-index: 1;
+        display: block;
+        font-size: 2rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .metric-value.metric-state {
+        font-size: clamp(1rem, 2vw, 1.45rem);
+        overflow-wrap: anywhere;
+    }
+
+    .metric-label {
+        position: relative;
+        z-index: 1;
+        display: block;
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .metric-card.has-link::after {
+        position: absolute;
+        right: -34px;
+        bottom: -34px;
+        width: 112px;
+        height: 112px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        content: "";
+        opacity: 0;
+        transform: scale(0.5);
+        transition: opacity 0.4s ease, transform 0.5s ease;
+    }
+
+    .metric-card.has-link:hover::after,
+    .metric-card.has-link:focus-visible::after {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    .metric-card-link {
+        position: absolute;
+        right: 16px;
+        bottom: 14px;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        opacity: 0;
+        transform: translate(12px, 10px);
+        transition: opacity 0.4s ease, transform 0.5s ease;
+    }
+
+    .metric-card-link i {
+        font-size: 0.95rem;
+        transition: transform 0.4s ease;
+    }
+
+    .metric-card:hover .metric-card-link,
+    .metric-card:focus-visible .metric-card-link {
+        opacity: 1;
+        transform: translate(0, 0);
+    }
+
+    .metric-card:hover .metric-card-link i,
+    .metric-card:focus-visible .metric-card-link i {
+        transform: translateX(4px);
+    }
+
+    @media (hover: none) {
+        .metric-card-link {
+            opacity: 1;
+            transform: none;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .metric-card,
+        .metric-icon,
+        .metric-card::after,
+        .metric-card-link,
+        .metric-card-link i {
+            transition: none;
+        }
+    }
+</style>
+{% endmacro %}
+
+<!-- show_link=true/false mostra a animação do link de redirecionamento no canto inferior direito dos cards -->
+{% macro metric_card(theme, icon, value_id, value, label, detail, href, action_text, show_link) %}
+{% if show_link %}
+<a class="metric-card metric-card-{{ theme }}{% if show_link %} has-link{% endif %} h-100" href="{{ href }}" aria-label="{{ action_text }}">
+{% else %}
+<article class="metric-card metric-card-{{ theme }}{% if show_link %} has-link{% endif %} h-100">
+{% endif %}
+    <span class="metric-icon" aria-hidden="true">
+        <i class="bi {{ icon }}"></i>
+    </span>
+    <span>
+        <span class="metric-value{% if value_id == 'system-state-metric' %} metric-state{% endif %}" id="{{ value_id }}">{{ value }}</span>
+        <span class="metric-label">{{ label }}<br>{{ detail }}</span>
+    </span>
+{% if show_link %}
+    <span class="metric-card-link" aria-hidden="true">
+        <span>{{ action_text }}</span>
+        <i class="bi bi-arrow-up-right"></i>
+    </span>
+{% endif %}
+{% if show_link %}
+</a>
+{% else %}
+</article>
+{% endif %}
+{% endmacro %}
