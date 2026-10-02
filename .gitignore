@@ -14,6 +14,9 @@ ENV/
 .env.*
 !.env.example
 
+# Chave local de autenticacao do EV3 (nunca versionar).
+ev3/token.txt
+
 # local data
 data/*.db
 data/*.db-*

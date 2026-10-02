@@ -16,6 +16,15 @@ CAMERA_DUPLICATE_COOLDOWN = float(
     os.getenv("CAMERA_DUPLICATE_COOLDOWN", "3.0")
 )
 HARDWARE_MODE = os.getenv("HARDWARE_MODE", "mock").strip().lower()
+CONVEYOR_MODE = os.getenv("CONVEYOR_MODE", "arduino").strip().lower()
+EV3_HOST = os.getenv("EV3_HOST", "").strip()
+EV3_PORT = int(os.getenv("EV3_PORT", "8765"))
+EV3_TOKEN = os.getenv("EV3_TOKEN", "").strip()
+EV3_CONNECT_TIMEOUT = float(os.getenv("EV3_CONNECT_TIMEOUT", "2.0"))
+COMMAND_TIMEOUT = float(os.getenv("COMMAND_TIMEOUT", "2.0"))
+COMMAND_RETRIES = int(os.getenv("COMMAND_RETRIES", "1"))
+# A maior sequencia do EV3 leva mais que os antigos 5 segundos.
+ARRIVAL_TIMEOUT = float(os.getenv("ARRIVAL_TIMEOUT", "35.0"))
 DATABASE_PATH = PROJECT_ROOT / "data" / "inteliesteira.db"
 FLASK_HOST = "127.0.0.1"
 FLASK_PORT = 5000

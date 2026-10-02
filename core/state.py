@@ -53,6 +53,7 @@ class SystemState:
             "macroregiao": None,
             "destino": None,
             "arduino": False,
+            "esteira_conectada": False,
             "camera": False,
             "garra": "livre",
             "esteira": "parada",
@@ -106,7 +107,7 @@ class SystemState:
             self.data["atualizado_em"] = _now_iso()
             return deepcopy(self.data)
 
-    def reset(self, *, arduino=False, camera=False):
+    def reset(self, *, arduino=False, camera=False, esteira_conectada=None):
         with self._lock:
             self.data.update(
                 {
@@ -118,6 +119,9 @@ class SystemState:
                     "macroregiao": None,
                     "destino": None,
                     "arduino": arduino,
+                    "esteira_conectada": (
+                        arduino if esteira_conectada is None else esteira_conectada
+                    ),
                     "camera": camera,
                     "garra": "livre",
                     "esteira": "parada",

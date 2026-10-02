@@ -1,4 +1,4 @@
-"""Protocolo textual compartilhado entre o backend e o Arduino."""
+"""Protocolo textual compartilhado com os controladores Arduino e EV3."""
 
 from __future__ import annotations
 

@@ -149,7 +149,7 @@
                 <div class="device-row">
                     <div>
                         Esteira
-                        <small>Motor e sensores</small>
+                        <small>Controlador da esteira (Arduino ou EV3)</small>
                     </div>
                     <span id="conveyor-connection-status" class="badge-status badge-offline">Consultando</span>
                 </div>
@@ -196,6 +196,12 @@
                         class="form-control mb-3"
                         type="text"
                         readonly>
+
+                    <label class="form-label" for="conveyor-mode">Modo da esteira</label>
+                    <input id="conveyor-mode" class="form-control mb-3" type="text" readonly>
+
+                    <label class="form-label" for="ev3-address">Endereço do EV3</label>
+                    <input id="ev3-address" class="form-control mb-3" type="text" readonly>
 
                     <label class="form-label" for="camera-index">Índice da câmera</label>
                     <input
@@ -262,11 +268,15 @@
     async function loadStatus() {
         const status = await apiRequest("{{ url_for('api.status') }}");
         setBadge("#gripper-connection-status", Boolean(status.arduino));
-        setBadge("#conveyor-connection-status", Boolean(status.arduino));
+        setBadge("#conveyor-connection-status", Boolean(status.esteira_conectada));
         setBadge("#camera-connection-status", Boolean(status.camera));
         $("#hardware-mode").val(status.hardware_modo || "desconhecido");
         $("#arduino-port").val(status.arduino_porta || "Não aplicável");
         $("#arduino-baudrate").val(status.arduino_baudrate || "Não aplicável");
+        $("#conveyor-mode").val(status.esteira_modo || "desconhecido");
+        $("#ev3-address").val(
+            status.ev3_host ? `${status.ev3_host}:${status.ev3_porta}` : "Não aplicável"
+        );
         $("#camera-index").val(status.camera_indice ?? "");
         $("#camera-mode").val(status.camera_modo || "desconhecido");
         return status;
@@ -292,10 +302,10 @@
     $(function () {
         loadStatus()
             .then((status) => setFeedback(
-                status.arduino && status.camera
+                status.arduino && status.esteira_conectada && status.camera
                     ? "Todos os componentes configurados estão conectados."
-                    : "Há componentes desconectados. Confira a porta e tente novamente.",
-                status.arduino && status.camera ? "success" : "neutral"
+                    : "Há componentes desconectados. Confira a porta/IP e tente novamente.",
+                status.arduino && status.esteira_conectada && status.camera ? "success" : "neutral"
             ))
             .catch((error) => setFeedback(error.message, "error"));
 

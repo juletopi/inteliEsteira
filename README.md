@@ -40,10 +40,9 @@ Interface web
 Flask
 		↓ lógica de negócio
 Controller
-		↓ comandos semânticos
-Arduino
-		↓
-Garra • Esteira • Câmera
+  ├── serial -> Arduino -> Garra
+  ├── TCP/IP -> LEGO EV3 -> Esteira e separador
+  └── OpenCV -> Webcam -> QR Code
 ```
 
 ### Funcionalidades
@@ -62,6 +61,11 @@ Garra • Esteira • Câmera
    - Adaptador real com pyserial, leitura em segundo plano, timeout e repetição.
    - Camada `vision` para captura de imagens e leitura de QR Code.
    - Leitura contínua pela webcam com OpenCV, preview e bloqueio de duplicatas.
+- Integração da esteira LEGO EV3:
+   - Ponte TCP no EV3 com autenticação, ACK e evento de conclusão por ciclo.
+   - Mapeamento explícito dos destinos do backend para os códigos do colega.
+   - Parada durante o movimento, watchdog de comunicação e proteção de reenvios.
+   - Simulador TCP para testar a mesma integração sem motores conectados.
 - Roteamento inicial de produtos:
    - Validação de QR Codes JSON contendo somente o identificador do produto.
    - Consulta da UF em um cadastro persistente, sem confiar o destino ao QR.
@@ -289,6 +293,132 @@ Depois que o time definir pinos, limites e quantidade de passos, o firmware de
 bancada deverá receber as ações físicas dos motores e sensores nos pontos em
 que hoje apenas envia `ACK` e `EVT`.
 
+### Esteira LEGO EV3 com Python
+
+O Flask, o cadastro SQLite e a webcam continuam no computador. O código em
+`ev3/` roda no EV3 com **Pybricks MicroPython 2.x**, como o programa recebido de
+Wasgton Gomes Pereira. Não instale `pybricks` nas dependências do Flask: os
+imports de motores só ocorrem quando o programa de hardware é iniciado no EV3.
+
+`HARDWARE_MODE=mock|serial` configura o Arduino da **garra**.
+`CONVEYOR_MODE=arduino|mock|ev3` escolhe o controlador da **esteira**. O padrão
+`arduino` preserva o comportamento anterior; `ev3` usa uma conexão independente.
+No modo `mock`, a esteira tem um simulador independente do Arduino da garra.
+
+O EV3 recebe os mesmos comandos `DESTINO`, `ESTEIRA:START`, `ESTEIRA:STOP` e
+`SISTEMA:RESET`, por linhas TCP, não pela porta serial do Arduino. A ponte aceita
+um backend por vez. O IP pode ser alcançado pela rede ou por USB configurado
+como rede no ev3dev; não basta tratar o cabo USB do EV3 como uma porta COM.
+Veja o [guia de rede do ev3dev](https://www.ev3dev.org/docs/networking/).
+
+O mapeamento físico preserva todos os valores numéricos recebidos:
+
+| Macrorregião | Destinos no backend | Códigos locais `codR` no EV3 |
+| --- | --- | --- |
+| Norte | R01, R02 | 1, 2 |
+| Sul | R03, R04 | 9, 10 |
+| Sudeste | R05, R06 | 7, 8 |
+| Nordeste | R07, R08 | 3, 4 |
+| Centro-Oeste | R09, R10 | 5, 6 |
+
+As calibrações estão em `ev3/calibration.py`. Corrigiu-se apenas o rótulo
+"Sudoeste" para "Sudeste". O motor A está na porta A; o separador, na porta C.
+O fator original `12 * 10` define velocidade em graus/segundo, não força em
+porcentagem; as voltas são multiplicadas por 360. Os movimentos agora são não
+bloqueantes para que a ponte possa receber uma parada enquanto os motores giram.
+Referência: [motores Pybricks 2.x](https://docs.pybricks.com/en/v2.0/ev3devices.html).
+
+#### Preparar o EV3 físico
+
+1. Confirme com o colega o ambiente Pybricks 2.x/ev3dev, as portas dos motores e
+   o IP acessível pelo computador. Copie os arquivos Python de `ev3/` para uma
+   pasta no EV3, por exemplo `/home/robot/inteliEsteira/ev3`.
+2. Crie nessa pasta o arquivo local `token.txt`, com uma chave aleatória de 16
+   a 128 letras/números, `_` ou `-`. Use a mesma chave em `EV3_TOKEN` no PC.
+   `token.txt` está ignorado pelo Git e nunca deve ser commitado. Para gerar
+   uma chave no seu terminal: `python -c "import secrets; print(secrets.token_hex(16))"`.
+3. No terminal SSH do EV3, a partir dessa pasta, execute
+   `pybricks-micropython server.py`. A ponte escuta na porta TCP 8765.
+   Opcionalmente, restrinja o IP de escuta: `pybricks-micropython server.py <IP_DO_EV3> 8765`.
+4. No PowerShell do computador, configure e inicie o backend:
+
+```powershell
+$env:HARDWARE_MODE = "serial"
+$env:ARDUINO_PORT = "COM3"                 # Porta real da garra.
+$env:CONVEYOR_MODE = "ev3"
+$env:EV3_HOST = "<IP_DO_EV3>"
+$env:EV3_PORT = "8765"
+$env:EV3_TOKEN = "<MESMA_CHAVE_DO_TOKEN_TXT>"
+$env:CAMERA_MODE = "opencv"
+$env:ARRIVAL_TIMEOUT = "35"
+.\.venv\Scripts\python.exe start.py
+```
+
+Use **Conexão → Tentar conectar**. Depois de inspecionar a montagem e posicionar
+manualmente a referência inicial, use **Resetar** e execute um produto por vez.
+O frontend continua chamando `POST /api/cycles`; não envia `codR` nem escolhe a
+UF por conta própria. O backend só movimenta a garra depois de conectar ambos
+os controladores. Sem firmware físico da garra, `HARDWARE_MODE=mock` permite
+testar apenas a esteira real, mas a coleta/soltura do objeto será simulada.
+
+`GET /api/status` diferencia `arduino` e `esteira_conectada`, informa
+`esteira_modo`, `ev3_host`, `ev3_porta` e nunca expõe a chave. `POST
+/api/system/reset` atinge os dois controladores sem repetir o comando quando
+eles são o mesmo Arduino. Reset limpa a operação lógica e freia os motores;
+**não executa homing físico** nem reenfileira um produto interrompido.
+
+A conexão usa uma chave compartilhada, mas **não tem TLS**. Restrinja-a a uma
+rede confiável, não exponha a porta à Internet e não compartilhe a chave.
+Heartbeats ocorrem a cada segundo; a ponte tenta frear os dois motores ao
+detectar desconexão ou após quatro segundos sem mensagem válida. O movimento
+também tem limite local de 30 segundos. Isso não substitui parada física de
+emergência e não garante frenagem em caso de falha elétrica/mecânica.
+
+Os últimos 128 ciclos são lembrados em RAM para impedir que um reenvio de
+`START` repita a ação. Um ciclo interrompido não pode ser reiniciado com o mesmo
+ID. Após reconexão é necessário resetar. Reiniciar a ponte perde esse histórico:
+inspecione o objeto e a referência física antes de uma nova operação.
+
+**Limite da validação atual:** `DESTINO_ALCANCADO` significa que o EV3 terminou
+as rotações calibradas; o código recebido não tem sensor de chegada. O status
+e o histórico identificam a confirmação como `movimento_calibrado`. Precisão
+da posição, escorregamento, referência inicial, retorno do separador e os
+valores de Sul 1/Sul 2 ainda precisam ser conferidos na bancada. Não alteramos
+essas calibrações nem inventamos uma rotina de homing.
+
+#### Testar a integração sem LEGO
+
+Em um primeiro terminal, na raiz do projeto:
+
+```powershell
+$env:EV3_TOKEN = "chave-apenas-teste-local-1234"
+.\.venv\Scripts\python.exe -m ev3.simulator
+```
+
+Em outro terminal, também na raiz:
+
+```powershell
+$env:HARDWARE_MODE = "mock"
+$env:CAMERA_MODE = "mock"
+$env:CONVEYOR_MODE = "ev3"
+$env:EV3_HOST = "127.0.0.1"
+$env:EV3_PORT = "8765"
+$env:EV3_TOKEN = "chave-apenas-teste-local-1234"
+.\.venv\Scripts\python.exe start.py
+```
+
+Cadastre um produto na tela **Produtos** e execute-o no **Dashboard**. O ciclo
+usa TCP de verdade, mas sem motores ou webcam real. O simulador escuta apenas
+no próprio computador. A chave de exemplo serve somente para esse teste local.
+Para voltar ao modo anterior, defina `$env:CONVEYOR_MODE = "arduino"` e reinicie.
+
+Os testes automatizados incluem a API, TCP em localhost, dez destinos,
+calibrações, ACK perdido, cancelamento, watchdog, falhas e reconexão:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
 ### Persistência
 
 O banco `data/inteliesteira.db` é criado automaticamente no primeiro início e
@@ -365,6 +495,12 @@ inteliEsteira/
 │       └── status.py
 ├── arduino/
 │   └── mock.ino
+├── ev3/
+│   ├── bridge.py
+│   ├── calibration.py
+│   ├── main.py
+│   ├── server.py
+│   └── simulator.py
 ├── core/
 │   ├── __init__.py
 │   ├── classifier.py
@@ -374,6 +510,8 @@ inteliEsteira/
 │   ├── __init__.py
 │   ├── arduino.py
 │   ├── conveyor.py
+│   ├── device.py
+│   ├── ev3_adapter.py
 │   ├── gripper.py
 │   ├── mock.py
 │   ├── protocol.py
@@ -396,6 +534,7 @@ inteliEsteira/
 │   ├── test_api.py
 │   ├── test_classifier.py
 │   ├── test_controller.py
+│   ├── test_ev3.py
 │   ├── test_protocol.py
 │   ├── test_qrcode.py
 │   ├── test_serial_adapter.py

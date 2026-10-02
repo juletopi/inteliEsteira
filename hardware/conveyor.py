@@ -1,10 +1,12 @@
 class Conveyor:
-    def __init__(self, arduino):
-        self.arduino = arduino
+    def __init__(self, device):
+        self.device = device
+        # Compatibilidade com os clientes anteriores que usavam apenas Arduino.
+        self.arduino = device
         self.destination = None
 
     def set_destination(self, destination, cycle_id, timeout=2.0, retries=1):
-        response = self.arduino.execute(
+        response = self.device.execute(
             f"DESTINO:{destination}",
             cycle_id,
             timeout=timeout,
@@ -14,7 +16,7 @@ class Conveyor:
         return response
 
     def start(self, cycle_id, timeout=2.0, retries=1):
-        return self.arduino.execute(
+        return self.device.execute(
             "ESTEIRA:START",
             cycle_id,
             timeout=timeout,
@@ -22,7 +24,7 @@ class Conveyor:
         )
 
     def stop(self, cycle_id, timeout=2.0, retries=1):
-        return self.arduino.execute(
+        return self.device.execute(
             "ESTEIRA:STOP",
             cycle_id,
             timeout=timeout,
@@ -30,7 +32,7 @@ class Conveyor:
         )
 
     def wait_until_destination(self, cycle_id, timeout=5.0, cancelled=None):
-        response = self.arduino.wait_for_event(
+        response = self.device.wait_for_event(
             "DESTINO_ALCANCADO",
             cycle_id,
             timeout=timeout,

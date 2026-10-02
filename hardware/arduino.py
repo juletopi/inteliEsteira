@@ -4,15 +4,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from hardware.device import HardwareError
 from hardware.protocol import ProtocolMessage
 
 
-class ArduinoError(RuntimeError):
+class ArduinoError(HardwareError):
     code = "ARDUINO_ERROR"
-
-    def __init__(self, message: str):
-        super().__init__(message)
-        self.message = message
 
 
 class ArduinoDisconnectedError(ArduinoError):
