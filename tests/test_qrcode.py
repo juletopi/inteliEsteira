@@ -1,12 +1,15 @@
 import unittest
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 
 from vision.qrcode import (
+    ArucoNotRegisteredError,
     QRCodeCamera,
     QRCodeNotFoundError,
     build_product_qr_payload,
+    generate_aruco_png,
     generate_product_qr_png,
 )
 
@@ -29,6 +32,53 @@ class StaticQRCodeCamera(QRCodeCamera):
 
 
 class QRCodeTests(unittest.TestCase):
+    def test_camera_requests_720p_and_reports_actual_resolution(self):
+        class Capture:
+            def __init__(self, accept_resolution):
+                self.accept_resolution = accept_resolution
+                self.properties = {
+                    cv2.CAP_PROP_FRAME_WIDTH: 640,
+                    cv2.CAP_PROP_FRAME_HEIGHT: 480,
+                }
+                self.settings = []
+                self.opened = True
+
+            def isOpened(self):
+                return self.opened
+
+            def set(self, property_id, value):
+                self.settings.append((property_id, value))
+                if self.accept_resolution:
+                    self.properties[property_id] = value
+                return self.accept_resolution
+
+            def get(self, property_id):
+                return self.properties[property_id]
+
+            def release(self):
+                self.opened = False
+
+        for accepted, expected in (
+            (True, {"largura": 1280, "altura": 720}),
+            (False, {"largura": 640, "altura": 480}),
+        ):
+            with self.subTest(accepted=accepted):
+                capture = Capture(accepted)
+                with patch.object(cv2, "VideoCapture", return_value=capture) as open_camera:
+                    camera = QRCodeCamera(camera_index=1, cv2_module=cv2)
+                    self.assertTrue(camera.connect())
+                    open_camera.assert_called_once_with(1)
+                self.assertEqual(
+                    capture.settings,
+                    [
+                        (cv2.CAP_PROP_FRAME_WIDTH, 1280),
+                        (cv2.CAP_PROP_FRAME_HEIGHT, 720),
+                    ],
+                )
+                self.assertEqual(camera.resolution(), expected)
+                camera.disconnect()
+                self.assertIsNone(camera.resolution())
+
     def test_generated_png_can_be_decoded_by_opencv(self):
         expected = '{"produto_id":"PROD-QR-001"}'
         png = generate_product_qr_png("PROD-QR-001")
@@ -45,6 +95,25 @@ class QRCodeTests(unittest.TestCase):
             build_product_qr_payload("PROD-8"),
             '{"produto_id":"PROD-8"}',
         )
+
+    def test_generated_aruco_resolves_to_product(self):
+        png = generate_aruco_png(17)
+        frame = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
+        camera = QRCodeCamera(
+            cv2_module=cv2,
+            aruco_resolver=lambda marker_id: {"id": "PROD-17"} if marker_id == 17 else None,
+        )
+
+        self.assertEqual(frame.shape[:2], (800, 800))
+        self.assertEqual(camera.read_qrcode(frame), '{"produto_id":"PROD-17"}')
+
+    def test_unregistered_aruco_is_rejected(self):
+        png = generate_aruco_png(18)
+        frame = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
+        camera = QRCodeCamera(cv2_module=cv2, aruco_resolver=lambda _id: None)
+
+        with self.assertRaises(ArucoNotRegisteredError):
+            camera.read_qrcode(frame)
 
     def test_real_camera_suppresses_immediate_duplicate(self):
         camera = StaticQRCodeCamera('{"produto_id":"PROD-1"}')

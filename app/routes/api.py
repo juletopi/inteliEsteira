@@ -16,8 +16,8 @@ from core.classifier import (
 from core.controller import ControllerError, CycleProcessingError, SystemBusyError
 from hardware.arduino import ArduinoError
 from hardware.serial_adapter import list_serial_ports
-from storage.repositories import ProductAlreadyExistsError
-from vision.qrcode import CameraError, generate_product_qr_png
+from storage.repositories import ArucoMarkersExhaustedError, ProductAlreadyExistsError
+from vision.qrcode import CameraError, generate_aruco_png, generate_product_qr_png
 
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -227,6 +227,41 @@ def product_qrcode(product_id):
         download_name=f"qr-{safe_product_id}.png",
         as_attachment=as_attachment,
         max_age=0,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@api_bp.post("/products/<product_id>/aruco")
+def register_product_aruco(product_id):
+    try:
+        product = current_app.extensions["product_repository"].ensure_aruco(product_id)
+    except ArucoMarkersExhaustedError as exc:
+        return _error_response("ARUCO_IDS_EXHAUSTED", str(exc), 409)
+    if product is None:
+        return _error_response("PRODUCT_NOT_FOUND", "Produto nao encontrado.", 404)
+    return jsonify({"ok": True, "produto": _with_macroregion(product)})
+
+
+@api_bp.get("/products/<product_id>/aruco")
+def product_aruco(product_id):
+    product = current_app.extensions["product_repository"].get(
+        product_id, include_inactive=True
+    )
+    if product is None:
+        return _error_response("PRODUCT_NOT_FOUND", "Produto nao encontrado.", 404)
+    if product["aruco_id"] is None:
+        return _error_response("ARUCO_NOT_REGISTERED", "Gere o ArUco deste produto primeiro.", 404)
+    try:
+        png = generate_aruco_png(product["aruco_id"])
+    except CameraError as exc:
+        return _error_response(exc.code, exc.message, 503)
+    safe_product_id = re.sub(r"[^A-Za-z0-9._-]+", "_", product["id"])
+    as_attachment = request.args.get("download", "").lower() in {"1", "true", "sim"}
+    response = send_file(
+        BytesIO(png), mimetype="image/png",
+        download_name=f"aruco-{safe_product_id}-id{product['aruco_id']}.png",
+        as_attachment=as_attachment, max_age=0,
     )
     response.headers["Cache-Control"] = "no-store"
     return response

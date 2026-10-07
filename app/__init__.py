@@ -91,9 +91,12 @@ def _configure_controller(app):
     elif camera_mode == "opencv":
         camera = QRCodeCamera(
             app.config.get("CAMERA_INDEX", 0),
+            width=app.config.get("CAMERA_WIDTH", 1280),
+            height=app.config.get("CAMERA_HEIGHT", 720),
             scan_timeout=app.config.get("CAMERA_SCAN_TIMEOUT", 8.0),
             retry_interval=app.config.get("CAMERA_RETRY_INTERVAL", 0.08),
             duplicate_cooldown=app.config.get("CAMERA_DUPLICATE_COOLDOWN", 3.0),
+            aruco_resolver=products.resolve_aruco,
         )
         atexit.register(camera.disconnect)
     else:

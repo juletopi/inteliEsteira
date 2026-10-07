@@ -15,6 +15,10 @@ class ProductAlreadyExistsError(RuntimeError):
     pass
 
 
+class ArucoMarkersExhaustedError(RuntimeError):
+    pass
+
+
 class ProductRepository:
     def __init__(self, database):
         self.database = database
@@ -37,10 +41,15 @@ class ProductRepository:
         return self.get(product_id, include_inactive=True)
 
     def get(self, product_id: str, *, include_inactive: bool = False) -> dict | None:
-        query = "SELECT * FROM products WHERE product_id = ?"
+        query = """
+            SELECT products.*, aruco_markers.marker_id AS aruco_id
+            FROM products
+            LEFT JOIN aruco_markers ON aruco_markers.product_id = products.product_id
+            WHERE products.product_id = ?
+        """
         parameters: tuple[object, ...] = (product_id,)
         if not include_inactive:
-            query += " AND active = 1"
+            query += " AND products.active = 1"
 
         with self.database.connect() as connection:
             row = connection.execute(query, parameters).fetchone()
@@ -52,14 +61,59 @@ class ProductRepository:
         return self.get(product_id, include_inactive=True)
 
     def list(self, *, include_inactive: bool = True) -> list[dict]:
-        query = "SELECT * FROM products"
+        query = """
+            SELECT products.*, aruco_markers.marker_id AS aruco_id
+            FROM products
+            LEFT JOIN aruco_markers ON aruco_markers.product_id = products.product_id
+        """
         if not include_inactive:
-            query += " WHERE active = 1"
-        query += " ORDER BY product_id COLLATE NOCASE"
+            query += " WHERE products.active = 1"
+        query += " ORDER BY products.product_id COLLATE NOCASE"
 
         with self.database.connect() as connection:
             rows = connection.execute(query).fetchall()
         return [self._serialize(row) for row in rows]
+
+    def resolve_aruco(self, marker_id: int) -> dict | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT products.*, aruco_markers.marker_id AS aruco_id
+                FROM aruco_markers
+                JOIN products ON products.product_id = aruco_markers.product_id
+                WHERE aruco_markers.marker_id = ?
+                """,
+                (marker_id,),
+            ).fetchone()
+        return self._serialize(row) if row else None
+
+    def ensure_aruco(self, product_id: str) -> dict | None:
+        with self.database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            product = connection.execute(
+                "SELECT product_id FROM products WHERE product_id = ?",
+                (product_id,),
+            ).fetchone()
+            if product is None:
+                return None
+
+            existing = connection.execute(
+                "SELECT marker_id FROM aruco_markers WHERE product_id = ?",
+                (product["product_id"],),
+            ).fetchone()
+            if existing is None:
+                used = {
+                    row["marker_id"]
+                    for row in connection.execute("SELECT marker_id FROM aruco_markers")
+                }
+                marker_id = next((value for value in range(250) if value not in used), None)
+                if marker_id is None:
+                    raise ArucoMarkersExhaustedError("Todos os 250 marcadores ArUco estao em uso.")
+                connection.execute(
+                    "INSERT INTO aruco_markers (marker_id, product_id) VALUES (?, ?)",
+                    (marker_id, product["product_id"]),
+                )
+        return self.get(product_id, include_inactive=True)
 
     def update(self, product_id: str, *, state: str, active: bool) -> dict | None:
         with self.database.connect() as connection:
@@ -87,6 +141,7 @@ class ProductRepository:
             "id": row["product_id"],
             "uf": row["state"],
             "ativo": bool(row["active"]),
+            "aruco_id": row["aruco_id"],
             "criado_em": row["created_at"],
             "atualizado_em": row["updated_at"],
         }
