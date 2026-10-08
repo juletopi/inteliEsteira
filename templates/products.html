@@ -183,7 +183,7 @@
                 </form>
 
                 <div id="product-feedback" class="feedback" role="status" aria-live="polite">
-                    Cadastre o identificador que será gravado no QR Code.
+                    Cadastre um produto para gerar sua etiqueta QR Code ou ArUco.
                 </div>
             </article>
         </div>
@@ -195,24 +195,66 @@
                     <span id="products-count" class="small-label">0 produtos</span>
                 </div>
 
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="aruco-size">Tamanho total da etiqueta ArUco</label>
+                        <select id="aruco-size" class="form-select form-select-sm">
+                            <option value="50">50 x 50 mm</option>
+                            <option value="40">40 x 40 mm</option>
+                            <option value="30">30 x 30 mm</option>
+                            <option value="20" selected>20 x 20 mm</option>
+                            <option value="all">Os quatro tamanhos na mesma folha</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="aruco-format">Formato do download</label>
+                        <select id="aruco-format" class="form-select form-select-sm">
+                            <option value="pdf" selected>PDF A4 para imprimir</option>
+                            <option value="png">PNG (imagem)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+                    <div class="form-check mb-0">
+                        <input id="select-all-products" class="form-check-input" type="checkbox" disabled>
+                        <label class="form-check-label" for="select-all-products">Marcar todos</label>
+                    </div>
+                    <span id="selected-products-count" class="small-label" role="status" aria-live="polite">0 selecionados</span>
+                    <button id="download-batch-button" type="button" class="btn btn-primary btn-sm" disabled>
+                        <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>
+                        Baixar selecionados (PDF)
+                    </button>
+                </div>
                 <div class="table-responsive">
                     <table class="table products-table mb-0">
                         <thead>
                             <tr>
+                                <th>Selecionar</th>
                                 <th>Identificador</th>
                                 <th>UF</th>
                                 <th>Macrorregião</th>
                                 <th>Status</th>
+                                <th>ArUco</th>
                                 <th>Ação</th>
                             </tr>
                         </thead>
                         <tbody id="products-table-body">
                             <tr>
-                                <td colspan="5" class="empty-state">Carregando produtos...</td>
+                                <td colspan="7" class="empty-state">Carregando produtos...</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
+                <p class="small text-secondary mt-3 mb-0">
+                    O ID ArUco fica vinculado ao produto e é reutilizado em cada download.
+                    Para recuperar uma etiqueta antiga, informe seu ID (0–249) antes de baixar.
+                    Deixe o campo vazio para atribuir um novo ID automaticamente.
+                    O tamanho inclui a margem branca e não altera o ID.
+                    Para manter a medida em milímetros, use o PDF em 100% / tamanho real,
+                    sem ajustar à página. Um tamanho individual gera quatro cópias na folha.
+                    No lote, cada produto recebe uma etiqueta por tamanho, com produto e região.
+                    O lote é sempre PDF; se necessário, continua em novas páginas sem reduzir as etiquetas.
+                </p>
             </article>
         </div>
     </section>
@@ -221,6 +263,11 @@
 
 {% block scripts %}
 <script>
+    const selectedProducts = new Set();
+    const productPrintInputs = new Map();
+    let currentProducts = [];
+    let batchDownloadInProgress = false;
+
     async function apiRequest(url, options = {}) {
         const response = await fetch(url, options);
         const data = await response.json().catch(() => ({}));
@@ -228,6 +275,33 @@
             throw new Error(data.erro?.mensagem || `Falha HTTP ${response.status}.`);
         }
         return data;
+    }
+
+    async function saveDownload(response, filename) {
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.erro?.mensagem || `Falha HTTP ${response.status}.`);
+        }
+        const blobUrl = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    }
+
+    function updateSelectionControls() {
+        const count = currentProducts.filter((product) => selectedProducts.has(product.id)).length;
+        $("#selected-products-count").text(`${count} selecionado${count === 1 ? "" : "s"}`);
+        $("#select-all-products")
+            .prop("checked", currentProducts.length > 0 && count === currentProducts.length)
+            .prop("indeterminate", count > 0 && count < currentProducts.length)
+            .prop("disabled", batchDownloadInProgress || currentProducts.length === 0);
+        $("#download-batch-button").prop("disabled", batchDownloadInProgress || count === 0);
+        $(".product-selection").prop("disabled", batchDownloadInProgress);
+        productPrintInputs.forEach(($input) => $input.prop("disabled", batchDownloadInProgress));
     }
 
     function setProductFeedback(message, type = "neutral") {
@@ -240,20 +314,35 @@
     }
 
     function renderProducts(products) {
+        currentProducts = products;
+        productPrintInputs.clear();
+        const availableIds = new Set(products.map((product) => product.id));
+        selectedProducts.forEach((id) => { if (!availableIds.has(id)) selectedProducts.delete(id); });
         const $body = $("#products-table-body").empty();
         $("#products-count").text(`${products.length} produto${products.length === 1 ? "" : "s"}`);
 
         if (!products.length) {
             $body.append(
                 $("<tr>").append(
-                    $("<td>", { colspan: 5, class: "empty-state" })
+                    $("<td>", { colspan: 7, class: "empty-state" })
                         .text("Nenhum produto cadastrado.")
                 )
             );
+            updateSelectionControls();
             return;
         }
 
         products.forEach((product) => {
+            const $selection = $("<input>", {
+                type: "checkbox",
+                class: "form-check-input product-selection",
+                checked: selectedProducts.has(product.id),
+                "aria-label": `Selecionar ${product.id}`
+            }).on("change", function () {
+                if (this.checked) selectedProducts.add(product.id);
+                else selectedProducts.delete(product.id);
+                updateSelectionControls();
+            });
             const $status = $("<span>", { class: "status-pill" })
                 .toggleClass("inactive", !product.ativo)
                 .text(product.ativo ? "Ativo" : "Inativo");
@@ -262,6 +351,12 @@
                 class: `btn btn-sm ${product.ativo ? "btn-outline-secondary" : "btn-outline-success"}`,
                 text: product.ativo ? "Desativar" : "Ativar"
             }).on("click", () => toggleProduct(product));
+            const $deleteAction = $("<button>", {
+                type: "button",
+                class: "btn btn-sm btn-outline-danger",
+                text: "Excluir",
+                title: `Excluir ${product.id} do catálogo`
+            }).on("click", () => deleteProduct(product, $deleteAction));
             const qrUrl = `{{ url_for('api.list_products') }}/${encodeURIComponent(product.id)}/qrcode`;
             const $qrAction = $("<a>", {
                 class: "btn btn-sm btn-outline-primary",
@@ -269,19 +364,45 @@
                 text: "Baixar QR",
                 title: `Baixar QR Code de ${product.id}`
             });
+            const $markerCell = $("<td>");
+            const $markerInput = $("<input>", {
+                type: "number",
+                min: 0,
+                max: 249,
+                step: 1,
+                class: "form-control form-control-sm",
+                placeholder: "ID antigo",
+                "aria-label": `${product.id}: ID da etiqueta ArUco antiga (opcional)`,
+                title: "Informe o ID da etiqueta antiga ou deixe vazio para gerar um novo."
+            }).css("width", "7rem");
+            productPrintInputs.set(product.id, $markerInput);
+            if (product.aruco_id != null) {
+                $markerCell.text(`ID ${product.aruco_id}`);
+            } else {
+                $markerCell.append($markerInput);
+            }
+            const $arucoAction = $("<button>", {
+                type: "button",
+                class: "btn btn-sm btn-outline-primary",
+                text: "Baixar ArUco",
+                title: `Baixar marcador ArUco de ${product.id}`
+            }).on("click", () => downloadArUco(product, $arucoAction, $markerCell, $markerInput));
             const $actions = $("<div>", { class: "product-actions" })
-                .append($qrAction, $action);
+                .append($qrAction, $arucoAction, $action, $deleteAction);
 
             $body.append(
                 $("<tr>").append(
+                    $("<td>").append($selection),
                     $("<td>").append($("<strong>").text(product.id)),
                     $("<td>").text(product.uf),
                     $("<td>").text(product.macroregiao.replace("_", "-")),
                     $("<td>").append($status),
+                    $markerCell,
                     $("<td>").append($actions)
                 )
             );
         });
+        updateSelectionControls();
     }
 
     async function loadProducts() {
@@ -289,18 +410,91 @@
         renderProducts(data.produtos);
     }
 
+    async function downloadArUco(product, $button, $markerCell, $markerInput) {
+        const size = $("#aruco-size").val();
+        const format = size === "all" ? "pdf" : $("#aruco-format").val();
+        const payload = {};
+        if (product.aruco_id == null) {
+            if (!$markerInput[0].reportValidity()) return;
+            if ($markerInput.val().trim() !== "") {
+                payload.aruco_id = Number($markerInput.val());
+            }
+        }
+        $button.prop("disabled", true);
+        $markerInput.prop("disabled", true);
+        try {
+            const url = `{{ url_for('api.list_products') }}/${encodeURIComponent(product.id)}/aruco`;
+            const data = await apiRequest(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            product.aruco_id = data.produto.aruco_id;
+            $markerCell.empty().text(`ID ${product.aruco_id}`);
+            const response = await fetch(`${url}?download=1&format=${format}&size_mm=${size}`);
+            const safeProductId = product.id.replace(/[^A-Za-z0-9._-]+/g, "_");
+            const sizeLabel = size === "all" ? "4-tamanhos" : `${size}mm`;
+            await saveDownload(response, `aruco-${safeProductId}-id${data.produto.aruco_id}-${sizeLabel}.${format}`);
+            setProductFeedback(
+                `${product.id}: download do ArUco ID ${product.aruco_id} iniciado (${size === "all" ? "quatro tamanhos" : `${size} mm`}, ${format.toUpperCase()}).`,
+                "success"
+            );
+        } catch (error) {
+            setProductFeedback(error.message, "error");
+        } finally {
+            $button.prop("disabled", false);
+            $markerInput.prop("disabled", false);
+        }
+    }
+
+    async function downloadArUcoBatch() {
+        if (batchDownloadInProgress) return;
+        const products = currentProducts.filter((product) => selectedProducts.has(product.id));
+        if (!products.length) return;
+        const items = [];
+        for (const product of products) {
+            const item = { produto_id: product.id };
+            if (product.aruco_id == null) {
+                const $input = productPrintInputs.get(product.id);
+                if (!$input[0].reportValidity()) {
+                    setProductFeedback(`Corrija o ID antigo de ${product.id}.`, "error");
+                    return;
+                }
+                if ($input.val().trim() !== "") item.aruco_id = Number($input.val());
+            }
+            items.push(item);
+        }
+        const size = $("#aruco-size").val();
+        batchDownloadInProgress = true;
+        updateSelectionControls();
+        try {
+            const response = await fetch("{{ url_for('api.product_aruco_batch') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ products: items, size_mm: size === "all" ? "all" : Number(size) })
+            });
+            await saveDownload(response, `aruco-lote-${size === "all" ? "4-tamanhos" : `${size}mm`}.pdf`);
+            await loadProducts();
+            setProductFeedback(
+                `PDF de ${products.length} produto${products.length === 1 ? "" : "s"} baixado. Se foram atribuídos novos IDs, exporte o catálogo atualizado.`,
+                "success"
+            );
+        } catch (error) {
+            setProductFeedback(error.message, "error");
+        } finally {
+            batchDownloadInProgress = false;
+            updateSelectionControls();
+        }
+    }
+
     async function toggleProduct(product) {
         try {
             const url = `{{ url_for('api.list_products') }}/${encodeURIComponent(product.id)}`;
-            if (product.ativo) {
-                await apiRequest(url, { method: "DELETE" });
-            } else {
-                await apiRequest(url, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ativo: true })
-                });
-            }
+            await apiRequest(url, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ativo: !product.ativo })
+            });
             setProductFeedback(
                 `${product.id} ${product.ativo ? "desativado" : "ativado"}.`,
                 "success"
@@ -311,8 +505,42 @@
         }
     }
 
+    async function deleteProduct(product, $button) {
+        if (!window.confirm(
+            `Excluir ${product.id}?\nO produto sairá do catálogo. O histórico e os identificadores ficam preservados e reservados.`
+        )) return;
+        $button.prop("disabled", true);
+        try {
+            const url = `{{ url_for('api.list_products') }}/${encodeURIComponent(product.id)}`;
+            await apiRequest(url, { method: "DELETE" });
+            selectedProducts.delete(product.id);
+            await loadProducts();
+            setProductFeedback(`${product.id} excluído. Exporte o catálogo atualizado antes de versionar.`, "success");
+        } catch (error) {
+            setProductFeedback(error.message, "error");
+        } finally {
+            $button.prop("disabled", false);
+        }
+    }
+
     $(function () {
         loadProducts().catch((error) => setProductFeedback(error.message, "error"));
+
+        $("#select-all-products").on("change", function () {
+            currentProducts.forEach((product) => {
+                if (this.checked) selectedProducts.add(product.id);
+                else selectedProducts.delete(product.id);
+            });
+            $(".product-selection").prop("checked", this.checked);
+            updateSelectionControls();
+        });
+        $("#download-batch-button").on("click", downloadArUcoBatch);
+
+        $("#aruco-size").on("change", function () {
+            const allSizes = $(this).val() === "all";
+            $("#aruco-format option[value='png']").prop("disabled", allSizes);
+            if (allSizes) $("#aruco-format").val("pdf");
+        });
 
         $("#product-form").on("submit", async function (event) {
             event.preventDefault();
@@ -326,7 +554,7 @@
                     body: JSON.stringify({ produto_id: productId, uf: state })
                 });
                 setProductFeedback(
-                    `${productId} cadastrado com destino ${state}. Use Baixar QR para gerar a etiqueta.`,
+                    `${productId} cadastrado com destino ${state}. Use Baixar QR ou Baixar ArUco para gerar a etiqueta.`,
                     "success"
                 );
                 $("#new-product-id").val("").trigger("focus");

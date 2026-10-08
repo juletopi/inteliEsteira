@@ -19,6 +19,14 @@ class ArucoMarkersExhaustedError(RuntimeError):
     pass
 
 
+class ArucoMarkerConflictError(RuntimeError):
+    pass
+
+
+class ProductNotRegisteredError(RuntimeError):
+    pass
+
+
 class ProductRepository:
     def __init__(self, database):
         self.database = database
@@ -35,6 +43,14 @@ class ProductRepository:
                     (product_id, state, now, now),
                 )
         except sqlite3.IntegrityError as exc:
+            with self.database.connect() as connection:
+                existing = connection.execute(
+                    "SELECT deleted_at FROM products WHERE product_id = ?", (product_id,)
+                ).fetchone()
+            if existing is not None and existing["deleted_at"] is not None:
+                raise ProductAlreadyExistsError(
+                    f"O identificador {product_id} pertence a um produto excluido e permanece reservado."
+                ) from exc
             raise ProductAlreadyExistsError(
                 f"O produto {product_id} ja esta cadastrado."
             ) from exc
@@ -46,6 +62,7 @@ class ProductRepository:
             FROM products
             LEFT JOIN aruco_markers ON aruco_markers.product_id = products.product_id
             WHERE products.product_id = ?
+              AND products.deleted_at IS NULL
         """
         parameters: tuple[object, ...] = (product_id,)
         if not include_inactive:
@@ -66,8 +83,9 @@ class ProductRepository:
             FROM products
             LEFT JOIN aruco_markers ON aruco_markers.product_id = products.product_id
         """
+        query += " WHERE products.deleted_at IS NULL"
         if not include_inactive:
-            query += " WHERE products.active = 1"
+            query += " AND products.active = 1"
         query += " ORDER BY products.product_id COLLATE NOCASE"
 
         with self.database.connect() as connection:
@@ -81,39 +99,62 @@ class ProductRepository:
                 SELECT products.*, aruco_markers.marker_id AS aruco_id
                 FROM aruco_markers
                 JOIN products ON products.product_id = aruco_markers.product_id
-                WHERE aruco_markers.marker_id = ?
+                WHERE aruco_markers.marker_id = ? AND products.deleted_at IS NULL
                 """,
                 (marker_id,),
             ).fetchone()
         return self._serialize(row) if row else None
 
-    def ensure_aruco(self, product_id: str) -> dict | None:
+    def ensure_aruco(self, product_id: str, *, marker_id: int | None = None) -> dict | None:
+        try:
+            return self.ensure_aruco_batch([{"produto_id": product_id, "aruco_id": marker_id}])[0]
+        except ProductNotRegisteredError:
+            return None
+
+    def ensure_aruco_batch(self, requests: list[dict]) -> list[dict]:
+        """Registra o lote em uma transacao, reservando IDs explicitos primeiro."""
         with self.database.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            product = connection.execute(
-                "SELECT product_id FROM products WHERE product_id = ?",
-                (product_id,),
-            ).fetchone()
-            if product is None:
-                return None
+            products = {}
+            for item in sorted(requests, key=lambda value: value.get("aruco_id") is None):
+                product = self._ensure_aruco(connection, item["produto_id"], item.get("aruco_id"))
+                products[item["produto_id"].lower()] = product
+            return [products[item["produto_id"].lower()] for item in requests]
 
-            existing = connection.execute(
-                "SELECT marker_id FROM aruco_markers WHERE product_id = ?",
-                (product["product_id"],),
-            ).fetchone()
-            if existing is None:
-                used = {
-                    row["marker_id"]
-                    for row in connection.execute("SELECT marker_id FROM aruco_markers")
-                }
-                marker_id = next((value for value in range(250) if value not in used), None)
-                if marker_id is None:
-                    raise ArucoMarkersExhaustedError("Todos os 250 marcadores ArUco estao em uso.")
-                connection.execute(
-                    "INSERT INTO aruco_markers (marker_id, product_id) VALUES (?, ?)",
-                    (marker_id, product["product_id"]),
+    def _ensure_aruco(self, connection, product_id, marker_id):
+        if marker_id is not None and (type(marker_id) is not int or not 0 <= marker_id <= 249):
+            raise ValueError("O ID ArUco deve ser um inteiro entre 0 e 249.")
+        row = connection.execute(
+            """SELECT products.*, aruco_markers.marker_id AS aruco_id
+               FROM products LEFT JOIN aruco_markers ON aruco_markers.product_id = products.product_id
+               WHERE products.product_id = ? AND products.deleted_at IS NULL""", (product_id,)
+        ).fetchone()
+        if row is None:
+            raise ProductNotRegisteredError(f"Produto {product_id} nao encontrado.")
+        product = self._serialize(row)
+        if product["aruco_id"] is not None:
+            if marker_id is not None and marker_id != product["aruco_id"]:
+                raise ArucoMarkerConflictError(
+                    f"O produto {product['id']} ja usa o ArUco {product['aruco_id']}. "
+                    "O vinculo existente foi preservado."
                 )
-        return self.get(product_id, include_inactive=True)
+            return product
+        if marker_id is None:
+            used = {row["marker_id"] for row in connection.execute("SELECT marker_id FROM aruco_markers")}
+            marker_id = next((value for value in range(250) if value not in used), None)
+            if marker_id is None:
+                raise ArucoMarkersExhaustedError("Todos os 250 marcadores ArUco estao em uso.")
+        else:
+            owner = connection.execute(
+                "SELECT product_id FROM aruco_markers WHERE marker_id = ?", (marker_id,)
+            ).fetchone()
+            if owner is not None:
+                raise ArucoMarkerConflictError(f"O ArUco {marker_id} ja pertence ao produto {owner['product_id']}.")
+        connection.execute(
+            "INSERT INTO aruco_markers (marker_id, product_id) VALUES (?, ?)", (marker_id, product["id"])
+        )
+        product["aruco_id"] = marker_id
+        return product
 
     def update(self, product_id: str, *, state: str, active: bool) -> dict | None:
         with self.database.connect() as connection:
@@ -121,7 +162,7 @@ class ProductRepository:
                 """
                 UPDATE products
                 SET state = ?, active = ?, updated_at = ?
-                WHERE product_id = ?
+                WHERE product_id = ? AND deleted_at IS NULL
                 """,
                 (state, int(active), _now_iso(), product_id),
             )
@@ -134,6 +175,16 @@ class ProductRepository:
         if product is None:
             return None
         return self.update(product_id, state=product["uf"], active=False)
+
+    def delete(self, product_id: str) -> bool:
+        """Retira do catalogo sem perder historico nem reciclar etiquetas antigas."""
+        now = _now_iso()
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                """UPDATE products SET active = 0, deleted_at = ?, updated_at = ?
+                   WHERE product_id = ? AND deleted_at IS NULL""", (now, now, product_id)
+            )
+        return cursor.rowcount > 0
 
     @staticmethod
     def _serialize(row) -> dict:

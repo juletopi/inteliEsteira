@@ -1,8 +1,10 @@
+from io import BytesIO
 import unittest
 from unittest.mock import patch
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from vision.qrcode import (
     ArucoNotRegisteredError,
@@ -114,6 +116,22 @@ class QRCodeTests(unittest.TestCase):
 
         with self.assertRaises(ArucoNotRegisteredError):
             camera.read_qrcode(frame)
+
+    def test_print_sizes_preserve_marker_and_record_physical_png_dimensions(self):
+        reference = cv2.imdecode(np.frombuffer(generate_aruco_png(17), dtype=np.uint8), cv2.IMREAD_COLOR)
+        camera = QRCodeCamera(
+            cv2_module=cv2,
+            aruco_resolver=lambda marker_id: {"id": "PROD-17"} if marker_id == 17 else None,
+        )
+        for size in (50, 40, 30, 20):
+            with self.subTest(size_mm=size):
+                png = generate_aruco_png(17, size_mm=size)
+                with Image.open(BytesIO(png)) as image:
+                    for pixels, dpi in zip(image.size, image.info["dpi"]):
+                        self.assertAlmostEqual(pixels / dpi * 25.4, size, delta=0.01)
+                frame = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
+                np.testing.assert_array_equal(frame, reference)
+                self.assertEqual(camera.read_qrcode(frame), '{"produto_id":"PROD-17"}')
 
     def test_real_camera_suppresses_immediate_duplicate(self):
         camera = StaticQRCodeCamera('{"produto_id":"PROD-1"}')
