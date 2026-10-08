@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS products (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS aruco_markers (
+    marker_id INTEGER PRIMARY KEY CHECK (marker_id BETWEEN 0 AND 249),
+    product_id TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS cycles (
     cycle_id TEXT PRIMARY KEY,
     product_id TEXT,

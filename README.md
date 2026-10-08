@@ -114,6 +114,25 @@ GET /api/products/PROD-0087/qrcode?download=1
 O PNG sempre codifica o JSON canônico `{"produto_id":"PROD-0087"}`. A UF não
 fica na etiqueta: ela continua protegida no cadastro do backend.
 
+Para usar ArUco, clique em **Baixar ArUco** na tela **Produtos**. O aplicativo
+atribui um ID fixo ao produto e baixa o PNG. Pela API, o mesmo fluxo é:
+
+```http
+POST /api/products/PROD-0087/aruco
+GET /api/products/PROD-0087/aruco?download=1
+```
+
+O marcador usa `DICT_4X4_250` e só é aceito pela câmera quando seu ID está
+vinculado a um produto no banco. A leitura resolve o ID para o produto e passa
+pela mesma validação de cadastro, atividade e destino usada pelo QR. Um marcador
+desconhecido é rejeitado; os IDs disponíveis vão de 0 a 249. A leitura QR
+continua disponível na mesma câmera. Para `PROD-0087`, há também uma folha A4
+com quatro etiquetas em `output/pdf/etiquetas-aruco-PROD-0087-20mm.pdf`.
+Imprima em **100% / tamanho real**, sem "ajustar à página". Cada quadrado
+demarcado mede 20 x 20 mm, incluindo a margem branca; confira a linha de 50 mm
+com uma régua. Um ArUco de 4 x 4 tem módulos maiores que o QR, mas a webcam
+ainda precisa conseguir focalizar o marcador na distância de uso.
+
 Depois, para testar a resolução de rota sem conectar o hardware:
 
 ```http
@@ -222,6 +241,8 @@ Parâmetros disponíveis:
 ```text
 CAMERA_MODE=mock|opencv
 CAMERA_INDEX=0
+CAMERA_WIDTH=1280
+CAMERA_HEIGHT=720
 CAMERA_SCAN_TIMEOUT=8.0
 CAMERA_RETRY_INTERVAL=0.08
 CAMERA_DUPLICATE_COOLDOWN=3.0
@@ -230,6 +251,8 @@ CAMERA_DUPLICATE_COOLDOWN=3.0
 O tempo de duplicata evita que uma etiqueta parada diante da lente inicie dois
 processamentos seguidos. Retire o produto do enquadramento antes de apresentar
 o próximo. O preview usa `GET /api/camera/frame` e só existe no modo `opencv`.
+`GET /api/status` informa `camera_resolucao` com o tamanho realmente aceito
+pela webcam. A resolucao maior nao corrige desfoque por falta de foco da lente.
 
 ### Arduino real pela porta serial
 

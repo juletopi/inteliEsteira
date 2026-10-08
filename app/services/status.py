@@ -34,6 +34,10 @@ def get_system_status():
     snapshot["camera"] = camera_connected
     snapshot["camera_modo"] = camera_mode
     snapshot["camera_indice"] = getattr(controller.camera, "camera_index", None)
+    snapshot["camera_resolucao"] = (
+        controller.camera.resolution()
+        if camera_connected and hasattr(controller.camera, "resolution") else None
+    )
     snapshot["total_ciclos"] = current_app.extensions[
         "cycle_repository"
     ].count_completed()

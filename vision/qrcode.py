@@ -32,6 +32,10 @@ class QRCodeNotFoundError(CameraError):
     code = "QR_CODE_NOT_FOUND"
 
 
+class ArucoNotRegisteredError(CameraError):
+    code = "ARUCO_NOT_REGISTERED"
+
+
 class QRCodeCamera:
     """Adaptador OpenCV para uma webcam local.
 
@@ -45,17 +49,30 @@ class QRCodeCamera:
         self,
         camera_index=0,
         *,
+        width=1280,
+        height=720,
         scan_timeout=8.0,
         retry_interval=0.08,
         duplicate_cooldown=3.0,
         cv2_module=None,
+        aruco_resolver=None,
     ):
         self.camera_index = int(camera_index)
+        self.width = max(1, int(width))
+        self.height = max(1, int(height))
         self.scan_timeout = max(0.1, float(scan_timeout))
         self.retry_interval = max(0.01, float(retry_interval))
         self.duplicate_cooldown = max(0.0, float(duplicate_cooldown))
         self._cv2 = cv2_module or _load_cv2()
         self._detector = self._cv2.QRCodeDetector()
+        self._aruco_resolver = aruco_resolver
+        self._aruco_detector = None
+        if aruco_resolver is not None:
+            aruco = getattr(self._cv2, "aruco", None)
+            if aruco is None:
+                raise CameraDependencyError("O OpenCV instalado nao oferece deteccao ArUco.")
+            dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_250)
+            self._aruco_detector = aruco.ArucoDetector(dictionary)
         self._capture = None
         self._lock = RLock()
         self._last_qr_code = None
@@ -75,6 +92,8 @@ class QRCodeCamera:
                 self._capture = None
                 return False
 
+            capture.set(self._cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            capture.set(self._cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self._capture = capture
             return True
 
@@ -109,9 +128,24 @@ class QRCodeCamera:
             ) from exc
 
         decoded = decoded.strip() if isinstance(decoded, str) else ""
-        if not decoded:
-            raise QRCodeNotFoundError("Nenhum QR Code encontrado no frame.")
-        return decoded
+        if decoded:
+            return decoded
+        if self._aruco_detector is not None:
+            try:
+                _corners, ids, _rejected = self._aruco_detector.detectMarkers(frame)
+            except Exception as exc:
+                raise CameraCaptureError("O OpenCV nao conseguiu analisar o marcador ArUco.") from exc
+            if ids is not None and len(ids):
+                if len(ids) != 1:
+                    raise CameraError("Mais de um marcador ArUco no frame.")
+                marker_id = int(ids[0][0])
+                product = self._aruco_resolver(marker_id)
+                if product is None:
+                    raise ArucoNotRegisteredError(
+                        f"O marcador ArUco {marker_id} nao esta vinculado a um produto."
+                    )
+                return build_product_qr_payload(product["id"])
+        raise QRCodeNotFoundError("Nenhum QR Code ou ArUco encontrado no frame.")
 
     def scan_qrcode(self, timeout=None, cancelled=None) -> str:
         """Le frames continuamente ate encontrar um QR novo ou expirar."""
@@ -170,6 +204,15 @@ class QRCodeCamera:
         with self._lock:
             return self._capture is not None and self._capture.isOpened()
 
+    def resolution(self) -> dict[str, int] | None:
+        with self._lock:
+            if self._capture is None or not self._capture.isOpened():
+                return None
+            return {
+                "largura": int(self._capture.get(self._cv2.CAP_PROP_FRAME_WIDTH)),
+                "altura": int(self._capture.get(self._cv2.CAP_PROP_FRAME_HEIGHT)),
+            }
+
 
 def build_product_qr_payload(product_id: str) -> str:
     """Gera o JSON canonico gravado no QR Code."""
@@ -204,6 +247,25 @@ def generate_product_qr_png(product_id: str) -> bytes:
     output = BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def generate_aruco_png(marker_id: int) -> bytes:
+    """Gera DICT_4X4_250 com margem branca de um modulo em cada lado."""
+
+    marker_id = int(marker_id)
+    if not 0 <= marker_id < 250:
+        raise ValueError("O ID ArUco deve estar entre 0 e 249.")
+    cv2 = _load_cv2()
+    aruco = getattr(cv2, "aruco", None)
+    if aruco is None:
+        raise CameraDependencyError("O OpenCV instalado nao oferece geracao ArUco.")
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_250)
+    marker = aruco.generateImageMarker(dictionary, marker_id, 600, borderBits=1)
+    image = cv2.copyMakeBorder(marker, 100, 100, 100, 100, cv2.BORDER_CONSTANT, value=255)
+    success, encoded = cv2.imencode(".png", image)
+    if not success:
+        raise CameraCaptureError("Nao foi possivel gerar a etiqueta ArUco.")
+    return encoded.tobytes()
 
 
 def _load_cv2():

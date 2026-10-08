@@ -4,8 +4,12 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+import cv2
+import numpy as np
+
 from app import create_app
 from hardware.arduino import ArduinoDisconnectedError
+from vision.qrcode import QRCodeCamera
 
 
 class ApiTests(unittest.TestCase):
@@ -48,6 +52,7 @@ class ApiTests(unittest.TestCase):
 
         status = self.client.get("/api/status").get_json()
         self.assertEqual(status["camera_modo"], "mock")
+        self.assertIsNone(status["camera_resolucao"])
         self.assertEqual(status["hardware_modo"], "mock")
 
     def test_dashboard_exposes_operational_controls(self):
@@ -79,6 +84,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn('id="products-table-body"', products_html)
         self.assertIn("/api/products", products_html)
         self.assertIn("Baixar QR", products_html)
+        self.assertIn("Baixar ArUco", products_html)
         self.assertIn('id="history-table-body"', history_html)
         self.assertIn("/api/cycles", history_html)
 
@@ -161,6 +167,43 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.get_json()["erro"]["codigo"], "PRODUCT_NOT_FOUND")
+
+    def test_aruco_registration_download_and_cycle(self):
+        self.register_product("PROD-ARUCO", "MG")
+        path = "/api/products/PROD-ARUCO/aruco"
+        self.assertEqual(self.client.get(path).status_code, 404)
+
+        first = self.client.post(path)
+        second = self.client.post(path)
+        self.assertEqual(first.status_code, 200)
+        marker_id = first.get_json()["produto"]["aruco_id"]
+        self.assertEqual(second.get_json()["produto"]["aruco_id"], marker_id)
+
+        image = self.client.get(path + "?download=1")
+        self.assertEqual(image.status_code, 200)
+        self.assertEqual(image.mimetype, "image/png")
+        self.assertIn("attachment", image.headers["Content-Disposition"])
+        frame = cv2.imdecode(np.frombuffer(image.data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        repository = self.client.application.extensions["product_repository"]
+        camera = QRCodeCamera(cv2_module=cv2, aruco_resolver=repository.resolve_aruco)
+        self.assertEqual(camera.read_qrcode(frame), self.qr("PROD-ARUCO").replace(": ", ":"))
+
+        camera.mode = "opencv"
+        camera.capture_frame = lambda: frame
+        controller = self.client.application.extensions["system_controller"]
+        controller.camera = camera
+        with patch.object(camera, "connect", return_value=True):
+            cycle = self.client.post("/api/cycles", json={})
+        self.assertEqual(cycle.status_code, 201)
+        self.assertEqual(cycle.get_json()["produto"]["id"], "PROD-ARUCO")
+
+        restarted = create_app({"TESTING": True, "DATABASE_PATH": self.database_path})
+        stored = restarted.extensions["product_repository"].resolve_aruco(marker_id)
+        self.assertEqual(stored["id"], "PROD-ARUCO")
+
+    def test_unknown_product_cannot_register_aruco(self):
+        response = self.client.post("/api/products/UNKNOWN/aruco")
+        self.assertEqual(response.status_code, 404)
 
     def test_mock_camera_preview_is_not_available(self):
         response = self.client.get("/api/camera/frame")
