@@ -4,7 +4,9 @@
 
 {% block head %}
 {% from "components/metric_card.html" import metric_card_styles %}
+{% from "components/production_card.html" import production_card_styles %}
 {{ metric_card_styles() }}
+{{ production_card_styles() }}
 <style>
     h2 {
         margin: 0;
@@ -59,32 +61,6 @@
 
     .alert-warning i {
         margin-right: 10px;
-    }
-
-    .production-card {
-        min-height: 88px;
-        padding: 14px;
-        border: 0;
-        border-left: 4px solid var(--orange);
-        border-radius: 6px;
-        background: #fbfcfb;
-    }
-
-    .production-card span,
-    .production-card strong {
-        display: block;
-    }
-
-    .production-card span {
-        color: var(--muted);
-        font-size: 0.7rem;
-        font-weight: 700;
-        text-transform: uppercase;
-    }
-
-    .production-card strong {
-        margin-top: 8px;
-        font-size: 0.88rem;
     }
 
     .control-row {
@@ -272,6 +248,14 @@
 {% set page_eyebrow = "Visão geral da operação" %}
 {% set page_title = "Dashboard" %}
 {% from "components/metric_card.html" import metric_card %}
+{% from "components/production_card.html" import production_card %}
+{% set production_regions = [
+    ("Norte", "R01 • R02"),
+    ("Sul", "R03 • R04"),
+    ("Sudeste", "R05 • R06"),
+    ("Nordeste", "R07 • R08"),
+    ("Centro-Oeste", "R09 • R10")
+] %}
 <main id="dashboard" class="dashboard-container py-4 py-lg-5">
     {% include "components/page_header.html" with context %}
 
@@ -300,7 +284,7 @@
 
     <section class="row g-3" aria-label="Controles e monitoramento">
         <div class="col-12 col-lg-4">
-            <article id="conexao"class="surface-panel h-100">
+            <article id="conexao"class="surface-panel">
                 <div class="panel-title">
                     <h2>Componentes</h2>
                 </div>
@@ -326,79 +310,57 @@
             </article>
         </div>
         <div class="col-12 col-lg-8">
-            <article id="linha-de-montagem" class="surface-panel h-100">
-                <div class="panel-title">
+            <article id="linha-de-producao" class="production-section">
+                <div class="panel-title pt-4">
                     <h2>Linha de produção</h2>
                 </div>
-                <div class="row g-2 production-list mb-4">
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Norte</span>
-                            <strong>R01 • R02</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Sul</span>
-                            <strong>R03 • R04</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Sudeste</span>
-                            <strong>R05 • R06</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Nordeste</span>
-                            <strong>R07 • R08</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Centro-Oeste</span>
-                            <strong>R09 • R10</strong>
-                        </div>
+                <div class="production-list-shell">
+                    <div class="production-list" aria-label="Regiões da linha de produção">
+                        {% for region, robots in production_regions %}
+                            {{ production_card(region, robots) }}
+                        {% endfor %}
                     </div>
                 </div>
 
-                <div id="simulation-input" class="simulation-form" aria-label="Entrada manual do QR Code">
-                    <div>
-                        <label class="form-label" for="product-id">Identificador do produto</label>
-                        <input
-                            id="product-id"
-                            class="form-control"
-                            type="text"
-                            maxlength="64"
-                            placeholder="Ex.: PROD-001"
-                            autocomplete="off">
-                        <span id="product-input-help" class="form-help">
-                            O QR simulado contém apenas esse identificador. A UF vem do
-                            <a href="{{ url_for('pages.products') }}">cadastro de produtos</a>.
-                        </span>
+                <div class="surface-panel production-details">
+                    <div id="simulation-input" class="simulation-form" aria-label="Entrada manual do QR Code">
+                        <div>
+                            <label class="form-label" for="product-id">Identificador do produto</label>
+                            <input
+                                id="product-id"
+                                class="form-control"
+                                type="text"
+                                maxlength="64"
+                                placeholder="Ex.: PROD-001"
+                                autocomplete="off">
+                            <span id="product-input-help" class="form-help">
+                                O QR simulado contém apenas esse identificador. A UF vem do
+                                <a href="{{ url_for('pages.products') }}">cadastro de produtos</a>.
+                            </span>
+                        </div>
+                    </div>
+                    <div class="current-cycle" aria-label="Dados do ciclo atual">
+                        <div class="cycle-field">
+                            <span>Produto</span>
+                            <strong id="current-product">—</strong>
+                        </div>
+                        <div class="cycle-field">
+                            <span>UF</span>
+                            <strong id="current-state">—</strong>
+                        </div>
+                        <div class="cycle-field">
+                            <span>Macrorregião</span>
+                            <strong id="current-macroregion">—</strong>
+                        </div>
+                        <div class="cycle-field">
+                            <span>Destino</span>
+                            <strong id="current-destination">—</strong>
+                        </div>
                     </div>
                 </div>
+            </article>
 
-                <div class="current-cycle" aria-label="Dados do ciclo atual">
-                    <div class="cycle-field">
-                        <span>Produto</span>
-                        <strong id="current-product">—</strong>
-                    </div>
-                    <div class="cycle-field">
-                        <span>UF</span>
-                        <strong id="current-state">—</strong>
-                    </div>
-                    <div class="cycle-field">
-                        <span>Macrorregião</span>
-                        <strong id="current-macroregion">—</strong>
-                    </div>
-                    <div class="cycle-field">
-                        <span>Destino</span>
-                        <strong id="current-destination">—</strong>
-                    </div>
-                </div>
-
+            <article id="webcam" class="surface-panel mt-3">
                 <div class="control-row">
                     <div class="control-actions">
                         <button
