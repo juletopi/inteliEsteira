@@ -1,0 +1,21 @@
+<style>
+    .page-heading h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.2rem);
+        font-weight: 800;
+        letter-spacing: -0.06em;
+    }
+
+    .page-heading .eyebrow {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+</style>
+
+<header class="page-heading mb-4">
+    <p class="eyebrow mb-2">{{ page_eyebrow }}</p>
+    <h1>{{ page_title }}</h1>
+</header>

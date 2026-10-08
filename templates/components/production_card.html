@@ -1,0 +1,86 @@
+{% macro production_card_styles() %}
+<style>
+    .production-list-shell {
+        position: relative;
+        margin-bottom: 24px;
+    }
+
+    .production-list-shell::after {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 10px;
+        width: 72px;
+        background: linear-gradient(90deg, rgba(244, 246, 243, 0), var(--paper));
+        content: "";
+        pointer-events: none;
+    }
+
+    .production-list {
+        display: flex;
+        gap: 10px;
+        margin: -10px 0 0 0;
+        padding: 2px 42px 10px 2px;
+        overflow-x: auto;
+        scrollbar-color: var(--line) transparent;
+        scrollbar-width: thin;
+    }
+
+    .production-list::-webkit-scrollbar {
+        height: 6px;
+    }
+
+    .production-list::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .production-list::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: var(--line);
+    }
+
+    .production-list > * {
+        flex: 0 0 158px;
+        width: 158px;
+    }
+
+    .production-card {
+        min-height: 88px;
+        padding: 14px;
+        border-left: 5px solid var(--purple);
+        border-radius: 2px 8px 8px 2px;
+        background: var(--surface);
+        box-shadow: 0 8px 20px rgba(23, 37, 43, 0.06);
+    }
+
+    .production-card span,
+    .production-card strong {
+        display: block;
+    }
+
+    .production-card span {
+        color: var(--muted);
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .production-card strong {
+        margin-top: 8px;
+        font-size: 0.88rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .production-list {
+            scroll-behavior: auto;
+        }
+    }
+</style>
+{% endmacro %}
+
+{% macro production_card(region, robots) %}
+<article class="production-card">
+    <span>{{ region }}</span>
+    <strong>{{ robots }}</strong>
+</article>
+{% endmacro %}

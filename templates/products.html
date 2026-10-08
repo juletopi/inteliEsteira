@@ -4,20 +4,12 @@
 
 {% block head %}
 <style>
-    h1 {
-        margin: 0;
-        font-size: clamp(2rem, 4vw, 3.2rem);
-        font-weight: 800;
-        letter-spacing: -0.06em;
-    }
-
     h2 {
         margin: 0;
         font-size: 1.05rem;
         font-weight: 800;
     }
 
-    .eyebrow,
     .small-label {
         color: var(--muted);
         font-size: 0.72rem;
@@ -29,8 +21,8 @@
     .surface-panel {
         height: 100%;
         padding: 24px;
-        border: 1px solid var(--line);
-        border-radius: 16px;
+        border: 0;
+        border-radius: 6px;
         background: var(--surface);
         box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
     }
@@ -55,8 +47,8 @@
     }
 
     .btn-primary {
-        border-color: #7467a8;
-        background: #7467a8;
+        border-color: var(--purple);
+        background: var(--purple);
     }
 
     .btn-primary:hover {
@@ -130,11 +122,10 @@
 {% endblock %}
 
 {% block content %}
+{% set page_eyebrow = "Catálogo de roteamento" %}
+{% set page_title = "Produtos" %}
 <main class="dashboard-container py-4 py-lg-5">
-    <header class="mb-4">
-        <p class="eyebrow mb-2">Catálogo de roteamento</p>
-        <h1>Produtos</h1>
-    </header>
+    {% include "components/page_header.html" with context %}
 
     <section class="row g-3" aria-label="Cadastro de produtos">
         <div class="col-12 col-lg-4">

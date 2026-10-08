@@ -3,79 +3,21 @@
 {% block title %}InteliEsteira | Dashboard{% endblock %}
 
 {% block head %}
+{% from "components/metric_card.html" import metric_card_styles %}
+{% from "components/production_card.html" import production_card_styles %}
+{{ metric_card_styles() }}
+{{ production_card_styles() }}
 <style>
-    h1 {
-        margin: 0;
-        font-size: clamp(2rem, 4vw, 3.2rem);
-        font-weight: 800;
-        letter-spacing: -0.06em;
-    }
-
     h2 {
         margin: 0;
         font-size: 1.05rem;
         font-weight: 800;
     }
 
-    .eyebrow,
-    .small-label,
-    .metric-label {
-        color: var(--muted);
-        font-size: 0.72rem;
-        font-weight: 800;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-    }
-
-    .metric-card {
-        display: flex;
-        align-items: center;
-        gap: 18px;
-        min-height: 132px;
-        padding: 24px;
-        border-radius: 16px;
-        color: white;
-    }
-
-    .metric-card-primary {
-        background: var(--teal);
-    }
-
-    .metric-card-accent {
-        background: var(--orange);
-    }
-
-    .metric-card-dark {
-        background: var(--ink);
-    }
-
-    .metric-icon {
-        font-size: 1.9rem;
-        opacity: 0.8;
-    }
-
-    .metric-value {
-        display: block;
-        font-size: 2rem;
-        font-weight: 800;
-        line-height: 1;
-    }
-
-    .metric-value.metric-state {
-        font-size: clamp(1rem, 2vw, 1.45rem);
-        overflow-wrap: anywhere;
-    }
-
-    .metric-card .metric-label {
-        display: block;
-        margin-top: 8px;
-        color: rgba(255, 255, 255, 0.75);
-    }
-
     .surface-panel {
         padding: 24px;
-        border: 1px solid var(--line);
-        border-radius: 16px;
+        border: 0;
+        border-radius: 6px;
         background: var(--surface);
         box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
     }
@@ -119,32 +61,6 @@
 
     .alert-warning i {
         margin-right: 10px;
-    }
-
-    .production-card {
-        min-height: 88px;
-        padding: 14px;
-        border: 1px solid var(--line);
-        border-left: 4px solid var(--orange);
-        border-radius: 10px;
-        background: #fbfcfb;
-    }
-
-    .production-card span,
-    .production-card strong {
-        display: block;
-    }
-
-    .production-card span {
-        color: var(--muted);
-        font-size: 0.7rem;
-        font-weight: 700;
-        text-transform: uppercase;
-    }
-
-    .production-card strong {
-        margin-top: 8px;
-        font-size: 0.88rem;
     }
 
     .control-row {
@@ -329,54 +245,46 @@
 {% endblock %}
 
 {% block content %}
+{% set page_eyebrow = "Visão geral da operação" %}
+{% set page_title = "Dashboard" %}
+{% from "components/metric_card.html" import metric_card %}
+{% from "components/production_card.html" import production_card %}
+{% set production_regions = [
+    ("Norte", "R01 • R02"),
+    ("Sul", "R03 • R04"),
+    ("Sudeste", "R05 • R06"),
+    ("Nordeste", "R07 • R08"),
+    ("Centro-Oeste", "R09 • R10")
+] %}
 <main id="dashboard" class="dashboard-container py-4 py-lg-5">
-    <header class="page-heading mb-4">
-        <div>
-            <p class="eyebrow mb-2">Visão geral da operação</p>
-            <h1>Dashboard</h1>
-        </div>
-    </header>
+    {% include "components/page_header.html" with context %}
 
-    <!-- seção mockada -->
     <section class="row g-3 mb-3" aria-label="Indicadores da operação">
         <div class="col-12 col-md-4">
-            <article class="metric-card metric-card-primary h-100">
-                <div class="metric-icon">
-                    <i class="bi bi-cpu-fill"></i>
-                </div>
-                <div>
-                    <span class="metric-value" id="connected-components">3</span>
-                    <span class="metric-label">Componentes<br>conectados</span>
-                </div>
-            </article>
+            {{ metric_card(
+                "primary", "bi-cpu-fill", "connected-components", "3",
+                "Componentes", "conectados", url_for("pages.connection"),
+                "Ver conexão", true
+            ) }}
         </div>
         <div class="col-12 col-md-4">
-            <article id="inventario" class="metric-card metric-card-accent h-100">
-                <div class="metric-icon">
-                    <i class="bi bi-boxes"></i>
-                </div>
-                <div>
-                    <span class="metric-value" id="packages-count">0</span>
-                    <span class="metric-label">Ciclos concluídos<br>no histórico</span>
-                </div>
-            </article>
+            {{ metric_card(
+                "accent", "bi-boxes", "packages-count", "0",
+                "Ciclos concluídos", "no histórico", url_for("pages.production"),
+                "Ver histórico", true
+            ) }}
         </div>
         <div class="col-12 col-md-4">
-            <article class="metric-card metric-card-dark h-100">
-                <div class="metric-icon">
-                    <i class="bi bi-stopwatch-fill"></i>
-                </div>
-                <div>
-                    <span class="metric-value metric-state" id="system-state-metric">IDLE</span>
-                    <span class="metric-label">Estado do sistema</span>
-                </div>
-            </article>
+            {{ metric_card(
+                "dark", "bi-stopwatch-fill", "system-state-metric", "IDLE",
+                "Estado", "do sistema", "", "", false
+            ) }}
         </div>
     </section>
 
     <section class="row g-3" aria-label="Controles e monitoramento">
         <div class="col-12 col-lg-4">
-            <article id="conexao"class="surface-panel h-100">
+            <article id="conexao"class="surface-panel">
                 <div class="panel-title">
                     <h2>Componentes</h2>
                 </div>
@@ -402,79 +310,57 @@
             </article>
         </div>
         <div class="col-12 col-lg-8">
-            <article id="linha-de-montagem" class="surface-panel h-100">
-                <div class="panel-title">
+            <article id="linha-de-producao" class="production-section">
+                <div class="panel-title pt-4">
                     <h2>Linha de produção</h2>
                 </div>
-                <div class="row g-2 production-list mb-4">
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Norte</span>
-                            <strong>R01 • R02</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Sul</span>
-                            <strong>R03 • R04</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Sudeste</span>
-                            <strong>R05 • R06</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Nordeste</span>
-                            <strong>R07 • R08</strong>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl">
-                        <div class="production-card">
-                            <span>Centro-Oeste</span>
-                            <strong>R09 • R10</strong>
-                        </div>
+                <div class="production-list-shell">
+                    <div class="production-list" aria-label="Regiões da linha de produção">
+                        {% for region, robots in production_regions %}
+                            {{ production_card(region, robots) }}
+                        {% endfor %}
                     </div>
                 </div>
 
-                <div id="simulation-input" class="simulation-form" aria-label="Entrada manual do QR Code">
-                    <div>
-                        <label class="form-label" for="product-id">Identificador do produto</label>
-                        <input
-                            id="product-id"
-                            class="form-control"
-                            type="text"
-                            maxlength="64"
-                            placeholder="Ex.: PROD-001"
-                            autocomplete="off">
-                        <span id="product-input-help" class="form-help">
-                            O QR simulado contém apenas esse identificador. A UF vem do
-                            <a href="{{ url_for('pages.products') }}">cadastro de produtos</a>.
-                        </span>
+                <div class="surface-panel production-details">
+                    <div id="simulation-input" class="simulation-form" aria-label="Entrada manual do QR Code">
+                        <div>
+                            <label class="form-label" for="product-id">Identificador do produto</label>
+                            <input
+                                id="product-id"
+                                class="form-control"
+                                type="text"
+                                maxlength="64"
+                                placeholder="Ex.: PROD-001"
+                                autocomplete="off">
+                            <span id="product-input-help" class="form-help">
+                                O QR simulado contém apenas esse identificador. A UF vem do
+                                <a href="{{ url_for('pages.products') }}">cadastro de produtos</a>.
+                            </span>
+                        </div>
+                    </div>
+                    <div class="current-cycle" aria-label="Dados do ciclo atual">
+                        <div class="cycle-field">
+                            <span>Produto</span>
+                            <strong id="current-product">—</strong>
+                        </div>
+                        <div class="cycle-field">
+                            <span>UF</span>
+                            <strong id="current-state">—</strong>
+                        </div>
+                        <div class="cycle-field">
+                            <span>Macrorregião</span>
+                            <strong id="current-macroregion">—</strong>
+                        </div>
+                        <div class="cycle-field">
+                            <span>Destino</span>
+                            <strong id="current-destination">—</strong>
+                        </div>
                     </div>
                 </div>
+            </article>
 
-                <div class="current-cycle" aria-label="Dados do ciclo atual">
-                    <div class="cycle-field">
-                        <span>Produto</span>
-                        <strong id="current-product">—</strong>
-                    </div>
-                    <div class="cycle-field">
-                        <span>UF</span>
-                        <strong id="current-state">—</strong>
-                    </div>
-                    <div class="cycle-field">
-                        <span>Macrorregião</span>
-                        <strong id="current-macroregion">—</strong>
-                    </div>
-                    <div class="cycle-field">
-                        <span>Destino</span>
-                        <strong id="current-destination">—</strong>
-                    </div>
-                </div>
-
+            <article id="webcam" class="surface-panel mt-3">
                 <div class="control-row">
                     <div class="control-actions">
                         <button
