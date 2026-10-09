@@ -49,6 +49,26 @@ CREATE INDEX IF NOT EXISTS idx_cycles_started_at
     ON cycles(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cycle_events_cycle_id
     ON cycle_events(cycle_id, id);
+
+CREATE TABLE IF NOT EXISTS operation_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDENTE',
+    cycle_id TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+CREATE INDEX IF NOT EXISTS idx_operation_queue_status ON operation_queue(status, id);
+CREATE TABLE IF NOT EXISTS operation_runtime (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    owner TEXT,
+    lease_until REAL NOT NULL DEFAULT 0,
+    stop_requested INTEGER NOT NULL DEFAULT 0,
+    info TEXT NOT NULL DEFAULT '{}'
+);
+INSERT OR IGNORE INTO operation_runtime (id) VALUES (1);
 """
 
 

@@ -143,6 +143,27 @@ class QRCodeTests(unittest.TestCase):
         self.assertEqual(first, '{"produto_id":"PROD-1"}')
         self.assertIn("mesmo da leitura anterior", context.exception.message)
 
+    def test_pickup_roi_limits_identification_and_rejects_multiple_markers(self):
+        from vision.qrcode import CameraError
+        left = cv2.imdecode(np.frombuffer(generate_aruco_png(17), dtype=np.uint8), cv2.IMREAD_COLOR)
+        right = cv2.imdecode(np.frombuffer(generate_aruco_png(18), dtype=np.uint8), cv2.IMREAD_COLOR)
+        frame = np.concatenate((left, right), axis=1)
+        resolver = lambda marker: {"id": "LEFT" if marker == 17 else "RIGHT"}
+        all_frame = QRCodeCamera(cv2_module=cv2, aruco_resolver=resolver)
+        with self.assertRaises(CameraError):
+            all_frame.read_qrcode(frame)
+        bounded = QRCodeCamera(cv2_module=cv2, aruco_resolver=resolver, pickup_roi=(0, 0, 0.5, 1))
+        self.assertEqual(bounded.read_qrcode(frame), '{"produto_id":"LEFT"}')
+
+    def test_clear_label_barrier_does_not_depend_only_on_duplicate_timer(self):
+        marker = cv2.imdecode(np.frombuffer(generate_aruco_png(17), dtype=np.uint8), cv2.IMREAD_COLOR)
+        camera = QRCodeCamera(cv2_module=cv2, aruco_resolver=lambda _marker: {"id": "PRODUCT"})
+        camera.capture_frame = lambda: marker
+        self.assertFalse(camera.wait_until_clear(timeout=0.15))
+        white = np.full_like(marker, 255)
+        camera.capture_frame = lambda: white
+        self.assertTrue(camera.wait_until_clear(timeout=1))
+
 
 if __name__ == "__main__":
     unittest.main()

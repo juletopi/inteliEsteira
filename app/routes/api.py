@@ -16,6 +16,8 @@ from core.classifier import (
 from core.controller import ControllerError, CycleProcessingError, SystemBusyError
 from hardware.arduino import ArduinoError
 from hardware.serial_adapter import list_serial_ports
+from storage.queue import QueueError
+from vision.qrcode import build_product_qr_payload
 from storage.repositories import (
     ArucoMarkerConflictError,
     ArucoMarkersExhaustedError,
@@ -80,6 +82,8 @@ def resolve_route():
 def process_cycle():
     """Executa um ciclo completo usando os adaptadores configurados."""
 
+    if current_app.extensions["workflow"].running():
+        return _error_response("SYSTEM_BUSY", "A fila esta controlando a operacao. Pare o fluxo antes de executar um ciclo avulso.", 409)
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return _error_response("INVALID_REQUEST", "Envie um objeto JSON valido.", 400)
@@ -374,8 +378,7 @@ def camera_frame():
 
 @api_bp.post("/system/stop")
 def stop_system():
-    controller = current_app.extensions["system_controller"]
-    return jsonify({"ok": True, "sistema": controller.stop()})
+    return jsonify({"ok": True, "sistema": current_app.extensions["workflow"].stop()})
 
 
 @api_bp.post("/system/connect")
@@ -401,10 +404,94 @@ def hardware_ports():
 def reset_system():
     controller = current_app.extensions["system_controller"]
     try:
-        snapshot = controller.reset()
+        snapshot = current_app.extensions["workflow"].reset()
+    except QueueError as exc:
+        return _error_response(exc.code, str(exc), 409)
     except ControllerError as exc:
         return _error_response(exc.code, exc.message, 409)
     return jsonify({"ok": True, "sistema": snapshot})
+
+
+@api_bp.get("/queue")
+def operation_queue():
+    return jsonify({"ok": True, **current_app.extensions["workflow"].snapshot()})
+
+
+@api_bp.post("/queue")
+def enqueue_products():
+    payload = request.get_json(silent=True)
+    product_ids = payload.get("produto_ids") if isinstance(payload, dict) else None
+    if not isinstance(product_ids, list) or not 1 <= len(product_ids) <= 100:
+        return _error_response("INVALID_REQUEST", "Envie de 1 a 100 identificadores em produto_ids.", 400)
+    try:
+        product_ids = [validate_product_id(value) for value in product_ids]
+        ids = current_app.extensions["workflow"].repository.enqueue(product_ids)
+    except ClassificationError as exc:
+        return _error_response(exc.code, exc.message, 400)
+    except QueueError as exc:
+        return _error_response(exc.code, str(exc), 409)
+    return jsonify({"ok": True, "ids": ids, **current_app.extensions["workflow"].snapshot()}), 201
+
+
+@api_bp.delete("/queue/<int:item_id>")
+def cancel_queue_item(item_id):
+    try:
+        current_app.extensions["workflow"].repository.edit(item_id, "cancel")
+    except QueueError as exc:
+        return _error_response(exc.code, str(exc), 409)
+    return jsonify({"ok": True, **current_app.extensions["workflow"].snapshot()})
+
+
+@api_bp.post("/queue/<int:item_id>/retry")
+def retry_queue_item(item_id):
+    try:
+        current_app.extensions["workflow"].repository.edit(item_id, "retry")
+    except QueueError as exc:
+        return _error_response(exc.code, str(exc), 409)
+    return jsonify({"ok": True, **current_app.extensions["workflow"].snapshot()})
+
+
+@api_bp.post("/flow/start")
+def start_flow():
+    try:
+        snapshot = current_app.extensions["workflow"].start()
+    except QueueError as exc:
+        return _error_response(exc.code, str(exc), 409)
+    except ControllerError as exc:
+        return _error_response(exc.code, exc.message, 409)
+    except (ArduinoError, CameraError) as exc:
+        return _error_response(exc.code, exc.message, 503)
+    return jsonify({"ok": True, **snapshot}), 202
+
+
+@api_bp.post("/simulation/camera")
+def simulate_camera_read():
+    camera = current_app.extensions["camera"]
+    if getattr(camera, "mode", None) != "mock":
+        return _error_response("SIMULATION_DISABLED", "A camera real nao aceita leituras injetadas pela API.", 403)
+    payload = request.get_json(silent=True)
+    try:
+        product_id = validate_product_id(payload.get("produto_id") if isinstance(payload, dict) else None)
+    except ClassificationError as exc:
+        return _error_response(exc.code, exc.message, 400)
+    camera.enqueue_qr_code(build_product_qr_payload(product_id))
+    return jsonify({"ok": True})
+
+
+@api_bp.get("/diagnostics")
+def operational_diagnostics():
+    controller = current_app.extensions["system_controller"]
+    devices = []
+    for name, device in controller._hardware_devices():
+        telemetry = getattr(device, "telemetry", None)
+        devices.append({"nome": name, "modo": getattr(device, "mode", "desconhecido"),
+                        "conectado": device.is_connected(), "ping_em": telemetry.last_ping_at if telemetry else None,
+                        "mensagens": telemetry.snapshot()[-40:] if telemetry else []})
+    cycle_id = controller.state.snapshot()["ciclo_id"]
+    return jsonify({"ok": True, "dispositivos": devices,
+                    "ciclo": controller.cycles.get(cycle_id, include_events=True) if cycle_id else None,
+                    "chegada": {"fonte": controller.conveyor.arrival_source, "fisica": controller.conveyor.physical_arrival},
+                    "fila": current_app.extensions["workflow"].snapshot()})
 
 
 def _error_response(code: str, message: str, status_code: int):

@@ -166,6 +166,12 @@ class SerialArduinoTests(unittest.TestCase):
                 cancelled=lambda: True,
             )
 
+    def test_error_during_action_wait_is_not_hidden_until_timeout(self):
+        arduino = self.build_arduino(self.acknowledge)
+        self.port.inject("ERR:unit_1:GARRA:PEGAR:MOTOR_BLOCKED")
+        with self.assertRaises(ArduinoCommandError):
+            arduino.wait_for_event("GARRA_COLETA_CONCLUIDA", "unit_1", timeout=0.5)
+
     def test_stop_command_is_sent_while_an_event_is_pending(self):
         arduino = self.build_arduino(self.acknowledge)
         cancelled = Event()
