@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS products (
     state TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS aruco_markers (
@@ -59,6 +60,10 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            connection.execute("BEGIN IMMEDIATE")
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(products)")}
+            if "deleted_at" not in columns:
+                connection.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT")
 
     @contextmanager
     def connect(self):

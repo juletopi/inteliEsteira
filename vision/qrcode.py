@@ -249,12 +249,17 @@ def generate_product_qr_png(product_id: str) -> bytes:
     return output.getvalue()
 
 
-def generate_aruco_png(marker_id: int) -> bytes:
+ARUCO_PRINT_SIZES_MM = (50, 40, 30, 20)
+
+
+def generate_aruco_png(marker_id: int, *, size_mm: int | None = None) -> bytes:
     """Gera DICT_4X4_250 com margem branca de um modulo em cada lado."""
 
     marker_id = int(marker_id)
     if not 0 <= marker_id < 250:
         raise ValueError("O ID ArUco deve estar entre 0 e 249.")
+    if size_mm is not None and (type(size_mm) is not int or size_mm not in ARUCO_PRINT_SIZES_MM):
+        raise ValueError("Escolha um tamanho ArUco de 20, 30, 40 ou 50 mm.")
     cv2 = _load_cv2()
     aruco = getattr(cv2, "aruco", None)
     if aruco is None:
@@ -265,7 +270,17 @@ def generate_aruco_png(marker_id: int) -> bytes:
     success, encoded = cv2.imencode(".png", image)
     if not success:
         raise CameraCaptureError("Nao foi possivel gerar a etiqueta ArUco.")
-    return encoded.tobytes()
+    png = encoded.tobytes()
+    if size_mm is not None:
+        from PIL import Image
+
+        # A imagem mantem os modulos nitidos; o DPI indica a medida fisica.
+        output = BytesIO()
+        with Image.open(BytesIO(png)) as printable:
+            dpi = printable.width * 25.4 / size_mm
+            printable.save(output, format="PNG", dpi=(dpi, dpi))
+        return output.getvalue()
+    return png
 
 
 def _load_cv2():

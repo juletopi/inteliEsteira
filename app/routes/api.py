@@ -16,8 +16,14 @@ from core.classifier import (
 from core.controller import ControllerError, CycleProcessingError, SystemBusyError
 from hardware.arduino import ArduinoError
 from hardware.serial_adapter import list_serial_ports
-from storage.repositories import ArucoMarkersExhaustedError, ProductAlreadyExistsError
-from vision.qrcode import CameraError, generate_aruco_png, generate_product_qr_png
+from storage.repositories import (
+    ArucoMarkerConflictError,
+    ArucoMarkersExhaustedError,
+    ProductAlreadyExistsError,
+    ProductNotRegisteredError,
+)
+from vision.labels import generate_aruco_batch_pdf, generate_aruco_pdf
+from vision.qrcode import ARUCO_PRINT_SIZES_MM, CameraError, generate_aruco_png, generate_product_qr_png
 
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -196,11 +202,11 @@ def update_product(product_id):
 
 
 @api_bp.delete("/products/<product_id>")
-def deactivate_product(product_id):
-    product = current_app.extensions["product_repository"].deactivate(product_id)
-    if product is None:
+def delete_product(product_id):
+    deleted = current_app.extensions["product_repository"].delete(product_id)
+    if not deleted:
         return _error_response("PRODUCT_NOT_FOUND", "Produto nao encontrado.", 404)
-    return jsonify({"ok": True, "produto": _with_macroregion(product)})
+    return jsonify({"ok": True, "produto_id": product_id, "excluido": True})
 
 
 @api_bp.get("/products/<product_id>/qrcode")
@@ -234,8 +240,20 @@ def product_qrcode(product_id):
 
 @api_bp.post("/products/<product_id>/aruco")
 def register_product_aruco(product_id):
+    payload = request.get_json(silent=True) if request.get_data() else {}
+    if not isinstance(payload, dict):
+        return _error_response("INVALID_REQUEST", "Envie um objeto JSON valido.", 400)
+    marker_id = payload.get("aruco_id")
+    if "aruco_id" in payload and (type(marker_id) is not int or not 0 <= marker_id <= 249):
+        return _error_response(
+            "INVALID_REQUEST", "O aruco_id deve ser um inteiro entre 0 e 249.", 400
+        )
     try:
-        product = current_app.extensions["product_repository"].ensure_aruco(product_id)
+        product = current_app.extensions["product_repository"].ensure_aruco(
+            product_id, marker_id=marker_id
+        )
+    except ArucoMarkerConflictError as exc:
+        return _error_response("ARUCO_ID_CONFLICT", str(exc), 409)
     except ArucoMarkersExhaustedError as exc:
         return _error_response("ARUCO_IDS_EXHAUSTED", str(exc), 409)
     if product is None:
@@ -252,16 +270,79 @@ def product_aruco(product_id):
         return _error_response("PRODUCT_NOT_FOUND", "Produto nao encontrado.", 404)
     if product["aruco_id"] is None:
         return _error_response("ARUCO_NOT_REGISTERED", "Gere o ArUco deste produto primeiro.", 404)
+    file_format = request.args.get("format", "png").lower()
+    raw_size = request.args.get("size_mm")
+    if file_format not in {"png", "pdf"}:
+        return _error_response("INVALID_REQUEST", "Escolha o formato png ou pdf.", 400)
+    if raw_size is not None and raw_size not in {str(size) for size in ARUCO_PRINT_SIZES_MM} | {"all"}:
+        return _error_response("INVALID_REQUEST", "Escolha size_mm=20, 30, 40, 50 ou all.", 400)
+    if raw_size == "all" and file_format != "pdf":
+        return _error_response("INVALID_REQUEST", "Os quatro tamanhos juntos exigem formato pdf.", 400)
+    size_mm = None if raw_size in {None, "all"} else int(raw_size)
+    suffix = ""
     try:
-        png = generate_aruco_png(product["aruco_id"])
+        if file_format == "pdf":
+            size_mm = 20 if raw_size is None else size_mm
+            content = generate_aruco_pdf(product["id"], product["aruco_id"], size_mm=size_mm)
+            suffix = "-4-tamanhos" if size_mm is None else f"-{size_mm}mm"
+        else:
+            content = generate_aruco_png(product["aruco_id"], size_mm=size_mm)
+            if size_mm is not None:
+                suffix = f"-{size_mm}mm"
     except CameraError as exc:
         return _error_response(exc.code, exc.message, 503)
     safe_product_id = re.sub(r"[^A-Za-z0-9._-]+", "_", product["id"])
     as_attachment = request.args.get("download", "").lower() in {"1", "true", "sim"}
     response = send_file(
-        BytesIO(png), mimetype="image/png",
-        download_name=f"aruco-{safe_product_id}-id{product['aruco_id']}.png",
+        BytesIO(content), mimetype="application/pdf" if file_format == "pdf" else "image/png",
+        download_name=f"aruco-{safe_product_id}-id{product['aruco_id']}{suffix}.{file_format}",
         as_attachment=as_attachment, max_age=0,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@api_bp.post("/products/aruco/batch")
+def product_aruco_batch():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _error_response("INVALID_REQUEST", "Envie um objeto JSON valido.", 400)
+    items = payload.get("products")
+    if not isinstance(items, list) or not 1 <= len(items) <= 250:
+        return _error_response("INVALID_REQUEST", "Selecione de 1 a 250 produtos.", 400)
+    size = payload.get("size_mm", 20)
+    if size != "all" and (type(size) is not int or size not in ARUCO_PRINT_SIZES_MM):
+        return _error_response("INVALID_REQUEST", "Escolha size_mm=20, 30, 40, 50 ou all.", 400)
+    requests, seen = [], set()
+    for item in items:
+        if not isinstance(item, dict):
+            return _error_response("INVALID_REQUEST", "Cada item deve informar produto_id.", 400)
+        try:
+            product_id = validate_product_id(item.get("produto_id"))
+        except ClassificationError as exc:
+            return _error_response("INVALID_REQUEST", exc.message, 400)
+        if product_id.lower() in seen:
+            return _error_response("INVALID_REQUEST", f"Produto repetido no lote: {product_id}.", 400)
+        seen.add(product_id.lower())
+        marker_id = item.get("aruco_id")
+        if "aruco_id" in item and (type(marker_id) is not int or not 0 <= marker_id <= 249):
+            return _error_response("INVALID_REQUEST", "O aruco_id deve ser um inteiro de 0 a 249.", 400)
+        requests.append({"produto_id": product_id, "aruco_id": marker_id})
+    try:
+        products = current_app.extensions["product_repository"].ensure_aruco_batch(requests)
+        content = generate_aruco_batch_pdf(products, size_mm=None if size == "all" else size)
+    except ProductNotRegisteredError as exc:
+        return _error_response("PRODUCT_NOT_FOUND", str(exc), 404)
+    except ArucoMarkerConflictError as exc:
+        return _error_response("ARUCO_ID_CONFLICT", str(exc), 409)
+    except ArucoMarkersExhaustedError as exc:
+        return _error_response("ARUCO_IDS_EXHAUSTED", str(exc), 409)
+    except CameraError as exc:
+        return _error_response(exc.code, exc.message, 503)
+    suffix = "4-tamanhos" if size == "all" else f"{size}mm"
+    response = send_file(
+        BytesIO(content), mimetype="application/pdf", as_attachment=True,
+        download_name=f"aruco-lote-{suffix}.pdf", max_age=0,
     )
     response.headers["Cache-Control"] = "no-store"
     return response

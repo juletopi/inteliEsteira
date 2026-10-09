@@ -115,12 +115,84 @@ O PNG sempre codifica o JSON canônico `{"produto_id":"PROD-0087"}`. A UF não
 fica na etiqueta: ela continua protegida no cadastro do backend.
 
 Para usar ArUco, clique em **Baixar ArUco** na tela **Produtos**. O aplicativo
-atribui um ID fixo ao produto e baixa o PNG. Pela API, o mesmo fluxo é:
+atribui um ID fixo ao produto e baixa a etiqueta no formato escolhido. Pela API, o mesmo fluxo é:
 
 ```http
 POST /api/products/PROD-0087/aruco
 GET /api/products/PROD-0087/aruco?download=1
 ```
+
+Na tela **Produtos**, escolha **50, 40, 30 ou 20 mm** e o formato **PDF A4** ou
+**PNG** antes de baixar. A opção **Os quatro tamanhos na mesma folha** gera um
+PDF com uma etiqueta de cada tamanho, todas vinculadas ao mesmo ID. Um tamanho
+individual gera um PDF com quatro cópias. A medida é o lado do quadrado completo,
+incluindo a margem branca. Mudar o tamanho não muda o vínculo do produto e não
+exige alterar o catálogo.
+
+```http
+GET /api/products/PROD-0087/aruco?download=1&format=pdf&size_mm=50
+GET /api/products/PROD-0087/aruco?download=1&format=pdf&size_mm=all
+GET /api/products/PROD-0087/aruco?download=1&format=png&size_mm=30
+```
+
+O PNG registra a medida nos metadados de DPI, que alguns aplicativos de impressão
+ignoram. Para obter a medida física, prefira o PDF em **100% / tamanho real**, sem
+ajustar à página. Confira a linha de referência de 50 mm com uma régua. Sem
+parâmetros, a API continua entregando o PNG original; PDF sem tamanho usa 20 mm.
+
+Para imprimir vários produtos juntos, marque as linhas desejadas ou **Marcar
+todos** e clique em **Baixar selecionados (PDF)**. O lote usa o tamanho escolhido,
+uma etiqueta por produto (ou quatro tamanhos por produto na opção correspondente).
+Cada etiqueta identifica **produto, macrorregião, UF e ID ArUco**. O PDF distribui
+os produtos em páginas A4 sem reduzir a medida física se o lote não couber em uma
+folha. Identificadores longos são quebrados em linhas, sem truncar.
+
+IDs existentes são mantidos. Produtos sem marcador recebem um ID disponível;
+se houver uma etiqueta antiga, informe seu ID no campo da linha antes de baixar
+o lote. Os IDs explícitos são reservados antes dos automáticos. Conflitos,
+produtos desconhecidos e falta de IDs cancelam todos os novos vínculos do lote.
+Se o lote atribuir novos IDs, exporte novamente o catálogo antes de versioná-lo.
+Região e UF são consultadas no cadastro, sem usar valores enviados pelo navegador.
+
+```http
+POST /api/products/aruco/batch
+Content-Type: application/json
+
+{"products": [{"produto_id": "PROD-0087"}, {"produto_id": "PROD-001"}], "size_mm": 30}
+```
+
+O identificador do produto (por exemplo, `PROD-0087`, sem espaços) e o ID numérico
+ArUco são diferentes. A coluna **ArUco** mostra o ID atribuído; baixar novamente
+reutiliza o mesmo vínculo, inclusive após reiniciar o servidor.
+
+Produtos e vínculos ficam em `data/inteliesteira.db`, um arquivo local ignorado
+pelo Git. Um `git pull` atualiza o código, mas não copia cadastros de outro
+computador ou checkout. Para manter as etiquetas existentes, use o mesmo banco
+ou transfira uma cópia dele com os servidores parados. Preserve o banco atual
+antes de substituí-lo; essa cópia não mescla os cadastros de dois bancos.
+Para criar um backup local com o servidor parado, execute no PowerShell:
+
+```powershell
+Copy-Item .\data\inteliesteira.db (".\data\inteliesteira-backup-{0}.db" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+```
+
+Se o banco antigo não estiver disponível, cadastre o produto com o identificador
+e UF originais. No campo **ID antigo**, informe o número da etiqueta antes de
+clicar em **Baixar ArUco**. O nome `aruco-PROD-0087-id17.png`, por exemplo,
+indica o ID 17; esse número é apenas um exemplo. Pela API:
+
+```http
+POST /api/products/PROD-0087/aruco
+Content-Type: application/json
+
+{"aruco_id": 17}
+```
+
+O servidor recusa IDs fora de 0–249, IDs já associados a outro produto e tentativas
+de trocar um vínculo existente. Deixar o campo vazio mantém a atribuição
+automática. Para reutilizar uma etiqueta antiga, é necessário conhecer o ID
+original (e usar o mesmo dicionário `DICT_4X4_250`); só o identificador do produto
+não permite deduzir o número que foi atribuído em outro banco.
 
 O marcador usa `DICT_4X4_250` e só é aceito pela câmera quando seu ID está
 vinculado a um produto no banco. A leitura resolve o ID para o produto e passa
@@ -443,6 +515,24 @@ calibrações, ACK perdido, cancelamento, watchdog, falhas e reconexão:
 ```
 
 ### Persistência
+
+Para manter os mesmos produtos e IDs ArUco em outro computador ou no dia da
+apresentação, siga o [roteiro de catálogo, backup e conferência](docs/apresentacao.md).
+O comando `python -m storage.catalog` exporta, importa e verifica os vínculos,
+além de criar um backup SQLite consistente sem sobrescrever arquivos anteriores.
+
+Na tela **Produtos**, **Desativar/Ativar** altera a disponibilidade mantendo o
+item visível. **Excluir** pede confirmação e remove o produto do catálogo e da
+seleção de impressão. O histórico continua disponível. O identificador do
+produto e seu ID ArUco ficam reservados; etiquetas antigas não passam a representar
+outro produto, e um identificador excluído não pode ser cadastrado novamente.
+
+`DELETE /api/products/<produto_id>` exclui o produto; para apenas desativar, use
+`PUT /api/products/<produto_id>` com `{"ativo": false}`. Ao iniciar, o aplicativo
+atualiza o banco existente sem apagar produtos ou histórico. Após excluir, exporte
+um novo catálogo: registros com `"excluido": true` transportam a exclusão e a reserva
+do marcador para a outra máquina. Eles ficam fora da lista da interface. Importar
+um catálogo anterior não reativa produtos já excluídos.
 
 O banco `data/inteliesteira.db` é criado automaticamente no primeiro início e
 armazena:
