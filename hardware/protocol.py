@@ -60,6 +60,11 @@ def validate_command(command: str) -> str:
         "GARRA:PEGAR",
         "GARRA:SOLTAR",
         "GARRA:HOME",
+        "GARRA:AREA:P01",
+        "GARRA:POSICIONAR:E01",
+        "GARRA:STOP",
+        "SISTEMA:PING",
+        "SENSOR:DESARMAR",
         "ESTEIRA:START",
         "ESTEIRA:STOP",
         "SISTEMA:RESET",
@@ -71,5 +76,10 @@ def validate_command(command: str) -> str:
         destination = normalized.removeprefix("DESTINO:")
         if destination in VALID_DESTINATIONS:
             return normalized
+
+    if normalized.startswith("SENSOR:ARMAR:") and normalized[13:] in VALID_DESTINATIONS:
+        return normalized
+    if normalized.startswith("SENSOR:INICIAR:") and normalized[15:] in VALID_DESTINATIONS:
+        return normalized
 
     raise ProtocolError(f"Comando desconhecido: {normalized or '<vazio>'}.")

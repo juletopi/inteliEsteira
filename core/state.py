@@ -7,6 +7,8 @@ SYSTEM_STATES = (
     "IDLE",
     "AGUARDANDO_OBJETO",
     "PEGANDO_OBJETO",
+    "POSICIONANDO_OBJETO",
+    "SOLTANDO_OBJETO",
     "OBJETO_POSICIONADO",
     "LENDO_QR",
     "VALIDANDO_QR",
@@ -20,12 +22,14 @@ SYSTEM_STATES = (
 
 ALLOWED_TRANSITIONS = {
     "IDLE": {"AGUARDANDO_OBJETO"},
-    "AGUARDANDO_OBJETO": {"PEGANDO_OBJETO", "PARADO", "ERRO"},
-    "PEGANDO_OBJETO": {"OBJETO_POSICIONADO", "PARADO", "ERRO"},
-    "OBJETO_POSICIONADO": {"LENDO_QR", "PARADO", "ERRO"},
+    "AGUARDANDO_OBJETO": {"LENDO_QR", "PARADO", "ERRO"},
+    "PEGANDO_OBJETO": {"POSICIONANDO_OBJETO", "PARADO", "ERRO"},
+    "POSICIONANDO_OBJETO": {"SOLTANDO_OBJETO", "PARADO", "ERRO"},
+    "SOLTANDO_OBJETO": {"OBJETO_POSICIONADO", "PARADO", "ERRO"},
+    "OBJETO_POSICIONADO": {"TRANSPORTANDO", "PARADO", "ERRO"},
     "LENDO_QR": {"VALIDANDO_QR", "PARADO", "ERRO"},
     "VALIDANDO_QR": {"DESTINO_DEFINIDO", "PARADO", "ERRO"},
-    "DESTINO_DEFINIDO": {"TRANSPORTANDO", "PARADO", "ERRO"},
+    "DESTINO_DEFINIDO": {"PEGANDO_OBJETO", "PARADO", "ERRO"},
     "TRANSPORTANDO": {"FINALIZADO", "PARADO", "ERRO"},
     "FINALIZADO": {"AGUARDANDO_OBJETO", "IDLE"},
     "PARADO": {"IDLE"},
@@ -58,6 +62,8 @@ class SystemState:
             "garra": "livre",
             "esteira": "parada",
             "erro": None,
+            "chegada_confirmacao": None,
+            "chegada_fisica": False,
             "atualizado_em": _now_iso(),
         }
 
@@ -126,6 +132,8 @@ class SystemState:
                     "garra": "livre",
                     "esteira": "parada",
                     "erro": None,
+                    "chegada_confirmacao": None,
+                    "chegada_fisica": False,
                     "atualizado_em": _now_iso(),
                 }
             )

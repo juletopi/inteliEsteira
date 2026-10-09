@@ -30,6 +30,9 @@ class BridgeController:
         command = command.strip().upper()
         ack = self.frame("ACK", cycle, command)
 
+        if command == "SISTEMA:PING":
+            return [ack]
+
         if command == "ESTEIRA:STOP" or command == "SISTEMA:RESET":
             interrupted = self.active or self.pending
             previous = self.cycles.get(cycle)
