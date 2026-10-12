@@ -60,10 +60,13 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(
             self.command_payloads(),
             [
+                "SISTEMA:PING",
+                "DESTINO:R08",
+                "GARRA:AREA:P01",
                 "GARRA:PEGAR",
+                "GARRA:POSICIONAR:E01",
                 "GARRA:SOLTAR",
                 "GARRA:HOME",
-                "DESTINO:R08",
                 "ESTEIRA:START",
                 "ESTEIRA:STOP",
             ],
@@ -76,6 +79,9 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(stored_cycle["estado"], "FINALIZADO")
         self.assertEqual(stored_cycle["produto_id"], "PROD-1")
         self.assertGreaterEqual(len(stored_cycle["eventos"]), 8)
+        events = [event["tipo"] for event in stored_cycle["eventos"]]
+        self.assertLess(events.index("QR_LIDO"), events.index("OBJETO_COLETADO"))
+        self.assertLess(events.index("OBJETO_ENTREGUE_NA_ESTEIRA"), events.index("ESTEIRA_INICIADA"))
 
     def test_retries_command_after_timeout(self):
         self.enqueue_product(state="PR")

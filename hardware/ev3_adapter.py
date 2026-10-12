@@ -8,6 +8,7 @@ from time import monotonic
 
 from hardware.device import HardwareError
 from hardware.protocol import ProtocolError, encode_message, parse_message, validate_command
+from hardware.telemetry import Telemetry
 
 
 class EV3DisconnectedError(HardwareError):
@@ -45,6 +46,7 @@ class EV3Adapter:
         self._messages = deque(maxlen=256)
         self.command_log = deque(maxlen=256)
         self.invalid_frames = deque(maxlen=20)
+        self.telemetry = Telemetry()
 
     def connect(self):
         with self._lifecycle_lock:
@@ -200,6 +202,7 @@ class EV3Adapter:
                 connection.sendall((frame + "\n").encode("ascii"))
                 if record:
                     self.command_log.append(frame)
+                    self.telemetry.record("TX", parse_message(frame))
         except OSError as exc:
             self._connection_failed(connection, exc)
             raise EV3DisconnectedError("Falha ao enviar comando ao EV3.") from exc
@@ -239,6 +242,7 @@ class EV3Adapter:
                         continue
                     last_received = monotonic()
                     with self._condition:
+                        self.telemetry.record("RX", message)
                         self._messages.append(message)
                         self._condition.notify_all()
                 if len(buffer) > 512:

@@ -56,6 +56,7 @@ class QRCodeCamera:
         duplicate_cooldown=3.0,
         cv2_module=None,
         aruco_resolver=None,
+        pickup_roi=None,
     ):
         self.camera_index = int(camera_index)
         self.width = max(1, int(width))
@@ -77,6 +78,13 @@ class QRCodeCamera:
         self._lock = RLock()
         self._last_qr_code = None
         self._last_qr_time = 0.0
+        self.pickup_roi = pickup_roi
+        if pickup_roi is not None:
+            if len(pickup_roi) != 4 or any(not 0 <= value <= 1 for value in pickup_roi):
+                raise ValueError("A ROI deve informar x, y, largura e altura normalizados entre 0 e 1.")
+            x, y, w, h = pickup_roi
+            if w <= 0 or h <= 0 or x + w > 1 or y + h > 1:
+                raise ValueError("A ROI deve ficar dentro do enquadramento.")
 
     def connect(self) -> bool:
         """Tenta abrir a webcam sem impedir que o servidor Flask inicie."""
@@ -119,6 +127,11 @@ class QRCodeCamera:
     def read_qrcode(self, frame) -> str:
         if frame is None:
             raise QRCodeNotFoundError("Nenhum frame foi informado para leitura.")
+        if self.pickup_roi is not None:
+            height, width = frame.shape[:2]
+            x, y, w, h = self.pickup_roi
+            frame = frame[int(y * height):max(int((y + h) * height), int(y * height) + 1),
+                          int(x * width):max(int((x + w) * width), int(x * width) + 1)]
 
         try:
             decoded, _points, _straight = self._detector.detectAndDecode(frame)
@@ -129,6 +142,14 @@ class QRCodeCamera:
 
         decoded = decoded.strip() if isinstance(decoded, str) else ""
         if decoded:
+            if hasattr(self._detector, "detectAndDecodeMulti"):
+                success, codes, _points, _straight = self._detector.detectAndDecodeMulti(frame)
+                if success and len(codes) > 1:
+                    raise CameraError("Mais de uma etiqueta QR na area de coleta. Apresente uma unidade por vez.")
+            if self._aruco_detector is not None:
+                _corners, ids, _rejected = self._aruco_detector.detectMarkers(frame)
+                if ids is not None and len(ids):
+                    raise CameraError("QR e ArUco simultaneos na area de coleta. Apresente uma etiqueta por vez.")
             return decoded
         if self._aruco_detector is not None:
             try:
@@ -186,6 +207,24 @@ class QRCodeCamera:
             f"Nenhum QR Code foi encontrado em {scan_timeout:.1f} segundos."
         )
 
+    def wait_until_clear(self, timeout=0.5, cancelled=None):
+        """Barreira contra etiqueta repetida: exige tres frames sem codigo visivel."""
+        deadline = monotonic() + timeout
+        empty_frames = 0
+        while monotonic() < deadline:
+            if cancelled is not None and cancelled():
+                return False
+            try:
+                self.read_qrcode(self.capture_frame())
+                empty_frames = 0
+            except QRCodeNotFoundError:
+                empty_frames += 1
+                if empty_frames >= 3:
+                    self._last_qr_code = None
+                    return True
+            sleep(self.retry_interval)
+        return False
+
     def encode_jpeg(self, frame, *, quality=85) -> bytes:
         quality = max(1, min(int(quality), 100))
         success, encoded = self._cv2.imencode(
@@ -198,7 +237,13 @@ class QRCodeCamera:
         return encoded.tobytes()
 
     def capture_jpeg(self, *, quality=85) -> bytes:
-        return self.encode_jpeg(self.capture_frame(), quality=quality)
+        frame = self.capture_frame()
+        if self.pickup_roi is not None:
+            height, width = frame.shape[:2]
+            x, y, w, h = self.pickup_roi
+            self._cv2.rectangle(frame, (int(x * width), int(y * height)),
+                                (min(width - 1, int((x + w) * width)), min(height - 1, int((y + h) * height))), (0, 180, 0), 2)
+        return self.encode_jpeg(frame, quality=quality)
 
     def is_connected(self) -> bool:
         with self._lock:

@@ -47,9 +47,15 @@ Controller
 
 ### Funcionalidades
 
+- Operação por fila planejada no Dashboard, com leitura automática pela câmera
+  antes da coleta, eventos de conclusão e diagnóstico das mensagens. Veja o
+  [roteiro de operação e validação sem Arduino](docs/operacao-fila.md).
+- Banco SQLite local para fila, cadastros e histórico; `data/catalogo-inicial.json`
+  inicializa somente bancos vazios, preservando os IDs em uma instalação nova.
 - Interface web de monitoramento e controle da linha de produção:
    - **Dashboard** responsivo conectado ao backend simulado.
-   - Controles para validar QR, executar ciclo, parar e resetar o sistema.
+   - Controles para planejar a sequência, verificar comunicação, iniciar fluxo,
+     parar e resetar o sistema.
    - Indicadores em tempo real de estado, componentes e último destino.
    - **Linha de produção** com histórico persistente de produtos processados.
    - **Produtos** para cadastrar identificadores, UFs e ativar/desativar itens.
@@ -232,7 +238,9 @@ Resposta esperada:
 
 ### Ciclo completo no simulador
 
-O projeto inicia com `HARDWARE_MODE = "mock"`. Nesse modo, a aplicação executa
+O hardware inicia com `HARDWARE_MODE = "mock"` e a câmera padrão é `opencv`.
+Para a API de ciclo simulado abaixo, configure também `CAMERA_MODE=mock`.
+Nesse modo, a aplicação executa
 o fluxo de garra, câmera, classificação, esteira e sensor de chegada sem exigir
 um Arduino conectado.
 
@@ -252,11 +260,13 @@ O ciclo percorre os estados:
 ```text
 IDLE
   -> AGUARDANDO_OBJETO
-  -> PEGANDO_OBJETO
-  -> OBJETO_POSICIONADO
   -> LENDO_QR
   -> VALIDANDO_QR
   -> DESTINO_DEFINIDO
+  -> PEGANDO_OBJETO
+  -> POSICIONANDO_OBJETO
+  -> SOLTANDO_OBJETO
+  -> OBJETO_POSICIONADO
   -> TRANSPORTANDO
   -> FINALIZADO
 ```
@@ -265,6 +275,7 @@ Comandos produzidos para o Arduino simulado:
 
 ```text
 CMD:<ciclo>:GARRA:PEGAR
+CMD:<ciclo>:GARRA:POSICIONAR:E01
 CMD:<ciclo>:GARRA:SOLTAR
 CMD:<ciclo>:GARRA:HOME
 CMD:<ciclo>:DESTINO:R08
@@ -287,6 +298,8 @@ ciclo.
 ### Webcam real com OpenCV
 
 O Arduino pode continuar simulado enquanto a webcam já funciona de verdade.
+No Dashboard, selecione produtos cadastrados para compor a fila e inicie o fluxo;
+não digite um identificador para substituir a leitura real.
 No PowerShell, inicie assim:
 
 ```powershell
@@ -694,7 +707,7 @@ ARDUINO_PORT = "COM3"
 ARDUINO_BAUDRATE = 9600
 HARDWARE_MODE = "mock"
 CAMERA_INDEX = 0
-CAMERA_MODE = "mock"
+CAMERA_MODE = "opencv"
 CAMERA_SCAN_TIMEOUT = 8.0
 FLASK_HOST = "127.0.0.1"
 FLASK_PORT = 5000

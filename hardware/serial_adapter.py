@@ -20,6 +20,7 @@ from hardware.protocol import (
     parse_message,
     validate_command,
 )
+from hardware.telemetry import Telemetry
 
 
 MAX_SERIAL_FRAME_LENGTH = 512
@@ -29,6 +30,7 @@ class SerialArduino(Arduino):
     """Arduino real com leitura em background e correlacao por ciclo."""
 
     mode = "serial"
+    arrival_source = "evento_serial"
 
     def __init__(
         self,
@@ -52,10 +54,11 @@ class SerialArduino(Arduino):
         self._stop_reader = Event()
         self._lifecycle_lock = RLock()
         self._write_lock = Lock()
-        self._messages: deque[ProtocolMessage] = deque()
+        self._messages: deque[ProtocolMessage] = deque(maxlen=500)
         self._condition = Condition()
         self.invalid_frames: deque[str] = deque(maxlen=20)
         self.command_log: list[str] = []
+        self.telemetry = Telemetry()
 
     def connect(self) -> bool:
         with self._lifecycle_lock:
@@ -200,13 +203,14 @@ class SerialArduino(Arduino):
 
             response = self._wait_for_message(
                 lambda message: (
-                    message.kind == "EVT"
-                    and message.cycle_id == cycle_id
-                    and message.payload.split(":", 1)[0] == expected
+                    message.cycle_id == cycle_id
+                    and (message.kind == "ERR" or message.kind == "EVT" and message.payload.split(":", 1)[0] == expected)
                 ),
                 timeout=min(remaining, 0.05),
             )
             if response is not None:
+                if response.kind == "ERR":
+                    raise ArduinoCommandError(f"Arduino informou falha durante {expected}: {response.payload}.")
                 return response
 
     def _send_frame(self, frame: str) -> None:
@@ -218,6 +222,7 @@ class SerialArduino(Arduino):
                 if hasattr(self._serial, "flush"):
                     self._serial.flush()
                 self.command_log.append(frame)
+                self.telemetry.record("TX", parse_message(frame))
         except Exception as exc:
             self._mark_connection_failed(exc)
             raise ArduinoDisconnectedError(
@@ -274,6 +279,7 @@ class SerialArduino(Arduino):
                 continue
 
             with self._condition:
+                self.telemetry.record("RX", message)
                 self._messages.append(message)
                 self._condition.notify_all()
 
@@ -336,4 +342,5 @@ def _create_serial_connection(**kwargs):
         raise ArduinoDisconnectedError(
             "A biblioteca pyserial nao esta instalada."
         ) from exc
-    return serial.Serial(**kwargs)
+    port = kwargs.pop("port")
+    return serial.serial_for_url(port, **kwargs)

@@ -323,22 +323,37 @@
                 </div>
 
                 <div class="surface-panel production-details">
-                    <div id="simulation-input" class="simulation-form" aria-label="Entrada manual do QR Code">
-                        <div>
-                            <label class="form-label" for="product-id">Identificador do produto</label>
-                            <input
-                                id="product-id"
-                                class="form-control"
-                                type="text"
-                                maxlength="64"
-                                placeholder="Ex.: PROD-001"
-                                autocomplete="off">
-                            <span id="product-input-help" class="form-help">
-                                O QR simulado contém apenas esse identificador. A UF vem do
-                                <a href="{{ url_for('pages.products') }}">cadastro de produtos</a>.
-                            </span>
+                    <div class="row g-2 mb-3" aria-label="Planejar sequência de produtos">
+                        <div class="col-md-7">
+                            <label class="form-label" for="queue-product">Produto cadastrado</label>
+                            <select id="queue-product" class="form-select"><option value="">Carregando produtos...</option></select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="queue-quantity">Unidades</label>
+                            <input id="queue-quantity" class="form-control" type="number" min="1" max="100" step="1" value="1">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button id="add-queue-button" class="btn btn-primary w-100" type="button">Adicionar à fila</button>
                         </div>
                     </div>
+                    <p class="small text-secondary">A ordem abaixo é obrigatória. A câmera lê a etiqueta na área de coleta P01;
+                        a garra só recebe autorização para o produto esperado e entrega na posição E01 da esteira.</p>
+                    <div id="queue-notice" class="alert alert-info py-2" role="status" aria-live="polite">Planeje a fila e inicie o fluxo.</div>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle">
+                            <thead><tr><th>Ordem</th><th>Produto</th><th>Estado</th><th>Ação</th></tr></thead>
+                            <tbody id="queue-table-body"><tr><td colspan="4">Fila vazia.</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div id="simulation-input" class="border rounded p-3 mb-3 d-none">
+                        <label class="form-label" for="simulation-product">Câmera simulada: etiqueta para apresentar</label>
+                        <div class="d-flex gap-2">
+                            <select id="simulation-product" class="form-select"></select>
+                            <button id="simulate-read-button" class="btn btn-outline-secondary text-nowrap" type="button">Simular leitura</button>
+                        </div>
+                        <p class="small text-secondary mb-0 mt-2">Somente no modo de teste. Com webcam real, a identificação vem da imagem.</p>
+                    </div>
+                    <p id="arrival-confirmation" class="small text-secondary">A confirmação de chegada aparecerá após o transporte.</p>
                     <div class="current-cycle" aria-label="Dados do ciclo atual">
                         <div class="cycle-field">
                             <span>Produto</span>
@@ -367,14 +382,14 @@
                             type="button"
                             id="check-button"
                             class="btn btn-light">
-                            <i class="bi bi-check2-circle"></i>Check
+                            <i class="bi bi-check2-circle"></i>Testar comunicação
                         </button>
 
                         <button
                             type="button"
                             id="start-button"
                             class="btn btn-primary">
-                            <i class="bi bi-play-fill"></i>Run
+                            <i class="bi bi-play-fill"></i>Iniciar fluxo
                         </button>
 
                         <button
@@ -400,8 +415,18 @@
                     </div>
                 </div>
                 <div id="operation-feedback" class="operation-feedback" role="status" aria-live="polite">
-                    Informe um produto cadastrado para validar ou executar um ciclo.
+                    Selecione produtos para a fila. A câmera identifica o produto antes de qualquer coleta.
                 </div>
+                <details class="mt-3">
+                    <summary>Mensagens e confirmações dos dispositivos</summary>
+                    <div id="communication-summary" class="small my-2"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm small">
+                            <thead><tr><th>Dispositivo</th><th>Direção</th><th>Tipo</th><th>Ciclo</th><th>Mensagem</th></tr></thead>
+                            <tbody id="communication-table-body"></tbody>
+                        </table>
+                    </div>
+                </details>
             </article>
         </div>
     </section>
@@ -411,213 +436,178 @@
 
 {% block scripts %}
 <script>
-    let currentCameraMode = "mock";
+    let currentCameraMode = "opencv";
     let currentCameraConnected = false;
-    let processing = false;
-
-    function setStatusBadge(selector, isConnected, connectedText = "Conectado") {
-        const $badge = $(selector);
-        
-        $badge.text(isConnected ? connectedText : "Desconectado");
-        $badge.toggleClass("badge-offline", !isConnected);
-    }
+    let flowActive = false;
+    let actionPending = false;
+    let queueItems = [];
+    let refreshing = false;
 
     function setFeedback(message, type = "neutral") {
-        const $feedback = $("#operation-feedback");
-        $feedback.removeClass("success error");
-        if (type === "success" || type === "error") {
-            $feedback.addClass(type);
-        }
-        $feedback.text(message);
-    }
-
-    function buildPayload() {
-        const productId = $("#product-id").val().trim();
-        if (!productId) {
-            throw new Error("Informe o identificador do produto.");
-        }
-
-        return {
-            qr_code: JSON.stringify({ produto_id: productId }),
-            ocupacao: {},
-            indisponiveis: []
-        };
-    }
-
-    function buildCyclePayload() {
-        if (currentCameraMode === "opencv") {
-            return { ocupacao: {}, indisponiveis: [] };
-        }
-        return buildPayload();
+        $("#operation-feedback").removeClass("success error").addClass(type === "neutral" ? "" : type).text(message);
     }
 
     async function apiRequest(url, options = {}) {
         const response = await fetch(url, options);
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            throw new Error(data.erro?.mensagem || `Falha HTTP ${response.status}.`);
-        }
+        if (!response.ok) throw new Error(data.erro?.mensagem || `Falha HTTP ${response.status}.`);
         return data;
     }
 
-    function setProcessing(active) {
-        processing = active;
-        $("#check-button, #start-button, #reset-button").prop("disabled", active);
-        if (active) {
-            $("#camera-image").addClass("d-none");
-            $("#camera-placeholder-content").removeClass("d-none");
-            $("#camera-placeholder-content span").text("Processando QR Code...");
-        } else {
-            updateCameraPanel(currentCameraConnected);
+    function setControls() {
+        $("#start-button").prop("disabled", actionPending || flowActive || !queueItems.length);
+        $("#check-button, #reset-button, #add-queue-button, #queue-product, #queue-quantity")
+            .prop("disabled", actionPending || flowActive);
+    }
+
+    function renderQueue(snapshot) {
+        flowActive = Boolean(snapshot.fluxo?.ativo);
+        queueItems = snapshot.itens || [];
+        const $body = $("#queue-table-body").empty();
+        if (!queueItems.length) $body.append($("<tr>").append($("<td>", {colspan: 4}).text("Fila vazia. Escolha um produto cadastrado.")));
+        queueItems.forEach((item, index) => {
+            const $actions = $("<div>", {class: "d-flex gap-1"});
+            $actions.append($("<button>", {type: "button", class: "btn btn-sm btn-outline-secondary", text: "Cancelar", disabled: flowActive})
+                .on("click", () => changeQueueItem(item.id, "cancel")));
+            if (item.estado === "ERRO" || item.estado === "INTERROMPIDO") {
+                $actions.append($("<button>", {type: "button", class: "btn btn-sm btn-outline-warning", text: "Tentar novamente", disabled: flowActive})
+                    .on("click", () => changeQueueItem(item.id, "retry")));
+            }
+            $body.append($("<tr>").append($("<td>").text(index + 1), $("<td>").text(item.produto_id),
+                $("<td>").text(item.estado).attr("title", item.erro?.mensagem || ""), $("<td>").append($actions)));
+        });
+        const flow = snapshot.fluxo || {};
+        const parts = [flow.estado || "PRONTO"];
+        if (flow.esperado) parts.push(`Esperado: ${flow.esperado}`);
+        if (flow.detectado) parts.push(`Última leitura: ${flow.detectado}`);
+        if (flow.aviso) parts.push(flow.aviso);
+        if (flow.erro) parts.push(flow.erro.mensagem);
+        $("#queue-notice").text(parts.join(" | "));
+        setControls();
+    }
+
+    async function loadProducts() {
+        const data = await apiRequest("{{ url_for('api.list_products') }}");
+        for (const selector of ["#queue-product", "#simulation-product"]) {
+            const previous = $(selector).val();
+            const $select = $(selector).empty().append($("<option>", {value: ""}).text("Selecione um produto"));
+            data.produtos.filter(product => product.ativo).forEach(product => {
+                $select.append($("<option>", {value: product.id}).text(`${product.id} - ${product.uf} - ${product.macroregiao.replace("_", "-")}`));
+            });
+            if (previous) $select.val(previous);
         }
     }
 
-    function updateCameraPanel(cameraConnected) {
-        const realCamera = currentCameraMode === "opencv";
+    function updateCameraPanel() {
+        const real = currentCameraMode === "opencv";
+        $("#simulation-input").toggleClass("d-none", real);
         const $image = $("#camera-image");
         const $placeholder = $("#camera-placeholder-content");
-
-        if (!realCamera) {
+        if (!real || !currentCameraConnected) {
             $image.addClass("d-none").removeAttr("src");
-            $placeholder.removeClass("d-none");
-            $placeholder.find("span").text("Webcam simulada");
-            $("#product-input-help").text(
-                "O QR simulado contém esse identificador; a UF vem do cadastro de produtos."
-            );
+            $placeholder.removeClass("d-none").find("span").text(real ? "Webcam indisponível" : "Câmera simulada (teste)");
             return;
         }
-
-        $("#product-input-help").text(
-            "Este campo serve ao Check manual. Ao executar, o QR será lido diretamente pela webcam."
-        );
-        if (!cameraConnected || processing) {
-            $image.addClass("d-none");
-            $placeholder.removeClass("d-none");
-            $placeholder.find("span").text(
-                cameraConnected ? "Lendo QR Code..." : "Webcam indisponível"
-            );
-            return;
-        }
-
-        $image.off("load.preview error.preview")
-            .one("load.preview", function () {
-                $placeholder.addClass("d-none");
-                $image.removeClass("d-none");
-            })
-            .one("error.preview", function () {
-                $image.addClass("d-none");
-                $placeholder.removeClass("d-none").find("span").text("Preview indisponível");
-            })
-            .attr("src", `{{ url_for('api.camera_frame') }}?t=${Date.now()}`);
+        $image.off("load.preview error.preview").one("load.preview", () => {
+            $image.removeClass("d-none"); $placeholder.addClass("d-none");
+        }).one("error.preview", () => {
+            $image.addClass("d-none"); $placeholder.removeClass("d-none").find("span").text("Preview indisponível");
+        }).attr("src", `{{ url_for('api.camera_frame') }}?t=${Date.now()}`);
     }
 
     async function updateStatus() {
-        const data = await apiRequest("{{ url_for('api.status') }}");
-        const arduinoConnected = Boolean(data.arduino);
-        const conveyorConnected = Boolean(data.esteira_conectada);
-        const cameraConnected = Boolean(data.camera);
-        currentCameraConnected = cameraConnected;
-        currentCameraMode = data.camera_modo || "mock";
-        const connectedComponents = Number(arduinoConnected) + Number(conveyorConnected) + Number(cameraConnected);
+        if (refreshing) return;
+        refreshing = true;
+        try {
+            const data = await apiRequest("{{ url_for('api.status') }}");
+            currentCameraMode = data.camera_modo;
+            currentCameraConnected = Boolean(data.camera);
+            renderQueue(data.fila);
+            for (const [selector, connected, mode, state] of [
+                ["#gripper-status", data.arduino, data.hardware_modo, data.garra],
+                ["#conveyor-status", data.esteira_conectada, data.esteira_modo, data.esteira]]) {
+                $(selector).toggleClass("badge-offline", !connected).text(!connected ? "Desconectado" :
+                    `${mode === "mock" || mode === "simulator" ? "Simulado" : "Conectado"} - ${state}`);
+            }
+            $("#camera-status").toggleClass("badge-offline", !data.camera).text(data.camera ? (currentCameraMode === "mock" ? "Simulada" : "Conectada") : "Desconectada");
+            $("#connected-components").text(Number(data.arduino) + Number(data.esteira_conectada) + Number(data.camera));
+            $("#packages-count").text(data.total_ciclos || 0);
+            $("#system-state-metric").text(data.fila.fluxo.ativo && data.fila.fluxo.estado !== "PROCESSANDO" ? data.fila.fluxo.estado : data.estado);
+            $("#current-product").text(data.produto || "—");
+            $("#current-state").text(data.uf || "—");
+            $("#current-macroregion").text(data.macroregiao || "—");
+            $("#current-destination").text(data.destino || "—");
+            const error = data.erro || data.fila.fluxo.erro;
+            $("#system-alert").toggleClass("d-none", !error);
+            if (error) $("#system-alert-message").text(error.mensagem);
+            $("#arrival-confirmation").text(`Confirmação de chegada: ${data.chegada_confirmacao || "aguardando"}. ${data.chegada_fisica ? "Sensor informado pelo controlador." : "Sem comprovação física de chegada."}`);
+            updateCameraPanel();
+        } finally { refreshing = false; }
+    }
 
-        setStatusBadge("#gripper-status", arduinoConnected, data.garra || "Conectado");
-        setStatusBadge("#conveyor-status", conveyorConnected, data.esteira || "Conectado");
-        setStatusBadge("#camera-status", cameraConnected);
-        updateCameraPanel(cameraConnected);
-        $("#connected-components").text(connectedComponents);
-        $("#packages-count").text(data.total_ciclos || 0);
-        $("#system-state-metric").text(data.estado || "DESCONHECIDO");
-        $("#current-product").text(data.produto || "—");
-        $("#current-state").text(data.uf || "—");
-        $("#current-macroregion").text(data.macroregiao || "—");
-        $("#current-destination").text(data.destino || "—");
+    async function updateDiagnostics() {
+        const data = await apiRequest("{{ url_for('api.operational_diagnostics') }}");
+        $("#communication-summary").text(data.dispositivos.map(device =>
+            `${device.nome}: ${device.modo}; ${device.conectado ? "conectado" : "desconectado"}; PING ${device.ping_em || "não confirmado"}`).join(" | "));
+        const $body = $("#communication-table-body").empty();
+        data.dispositivos.forEach(device => device.mensagens.slice(-12).forEach(frame => {
+            $body.append($("<tr>").append($("<td>").text(device.nome), $("<td>").text(frame.direcao),
+                $("<td>").text(frame.tipo), $("<td>").text(frame.ciclo_id), $("<td>").text(frame.mensagem)));
+        }));
+    }
 
-        if (data.erro) {
-            $("#system-alert-message").text(data.erro.mensagem);
-            $("#system-alert").removeClass("d-none");
-        } else {
-            $("#system-alert").addClass("d-none");
-        }
+    async function changeQueueItem(id, action) {
+        if (action === "retry" && !window.confirm("Inspecione a operação interrompida, retire a etiqueta da imagem e reposicione a unidade na área P01. Deseja reenfileirar para uma nova tentativa?")) return;
+        try {
+            const suffix = action === "retry" ? "/retry" : "";
+            const data = await apiRequest(`{{ url_for('api.operation_queue') }}/${id}${suffix}`, {method: action === "retry" ? "POST" : "DELETE"});
+            renderQueue(data);
+            setFeedback(action === "retry" ? "Item reenfileirado. Resete o sistema e inicie quando a montagem estiver pronta." : "Item cancelado.", "success");
+        } catch (error) { setFeedback(error.message, "error"); }
+    }
+
+    async function controlRequest(url, message) {
+        actionPending = true; setControls();
+        try {
+            const data = await apiRequest(url, {method: "POST"});
+            if (data.fluxo) renderQueue(data);
+            setFeedback(message, "success");
+        } catch (error) { setFeedback(error.message, "error"); }
+        finally { actionPending = false; await updateStatus().catch(() => {}); setControls(); }
     }
 
     $(function () {
-        updateStatus().catch((error) => {
-            setFeedback(error.message, "error");
-        });
-
-        $("#check-button").on("click", async function () {
-            try {
-                setProcessing(true);
-                const data = await apiRequest("{{ url_for('api.resolve_route') }}", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(buildPayload())
-                });
-                setFeedback(
-                    `${data.produto.id}: ${data.macroregiao} → ${data.destino}`,
-                    "success"
-                );
-                $("#current-product").text(data.produto.id);
-                $("#current-state").text(data.produto.uf);
-                $("#current-macroregion").text(data.macroregiao);
-                $("#current-destination").text(data.destino);
-            } catch (error) {
-                setFeedback(error.message, "error");
-            } finally {
-                setProcessing(false);
+        loadProducts().catch(error => setFeedback(error.message, "error"));
+        updateStatus().catch(error => setFeedback(error.message, "error"));
+        updateDiagnostics().catch(() => {});
+        $("#add-queue-button").on("click", async function () {
+            const product = $("#queue-product").val();
+            const quantity = Number($("#queue-quantity").val());
+            if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+                setFeedback("Escolha um produto cadastrado e de 1 a 100 unidades.", "error"); return;
             }
-        });
-
-        $("#start-button").on("click", async function () {
+            actionPending = true; setControls();
             try {
-                setProcessing(true);
-                setFeedback(
-                    currentCameraMode === "opencv"
-                        ? "Executando o ciclo e aguardando a leitura pela webcam..."
-                        : "Executando o ciclo simulado..."
-                );
-                const data = await apiRequest("{{ url_for('api.process_cycle') }}", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(buildCyclePayload())
-                });
-                setFeedback(
-                    `Ciclo ${data.ciclo_id} finalizado: ${data.macroregiao} → ${data.destino}.`,
-                    "success"
-                );
-            } catch (error) {
-                setFeedback(error.message, "error");
-            } finally {
-                setProcessing(false);
-                await updateStatus().catch(() => {});
-            }
+                const data = await apiRequest("{{ url_for('api.enqueue_products') }}", {method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({produto_ids: Array(quantity).fill(product)})});
+                renderQueue(data); setFeedback("Unidades adicionadas na ordem da fila.", "success");
+            } catch (error) { setFeedback(error.message, "error"); }
+            finally { actionPending = false; setControls(); }
         });
-
-        $("#stop-button").on("click", async function () {
+        $("#simulate-read-button").on("click", async function () {
             try {
-                await apiRequest("{{ url_for('api.stop_system') }}", { method: "POST" });
-                setFeedback("Sistema parado pelo operador.", "success");
-            } catch (error) {
-                setFeedback(error.message, "error");
-            } finally {
-                await updateStatus().catch(() => {});
-            }
+                const product = $("#simulation-product").val();
+                if (!product) throw new Error("Escolha a etiqueta a simular.");
+                await apiRequest("{{ url_for('api.simulate_camera_read') }}", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({produto_id: product})});
+                setFeedback(`Leitura simulada enviada: ${product}.`, "success");
+            } catch (error) { setFeedback(error.message, "error"); }
         });
-
-        $("#reset-button").on("click", async function () {
-            try {
-                setProcessing(true);
-                await apiRequest("{{ url_for('api.reset_system') }}", { method: "POST" });
-                setFeedback("Sistema resetado e pronto para um novo ciclo.", "success");
-            } catch (error) {
-                setFeedback(error.message, "error");
-            } finally {
-                setProcessing(false);
-                await updateStatus().catch(() => {});
-            }
-        });
-
-        window.setInterval(() => updateStatus().catch(() => {}), 1500);
+        $("#check-button").on("click", () => controlRequest("{{ url_for('api.connect_system') }}", "Comunicação verificada por PING/ACK. Consulte as mensagens dos dispositivos."));
+        $("#start-button").on("click", () => controlRequest("{{ url_for('api.start_flow') }}", "Fluxo iniciado. Apresente o produto esperado à câmera na área P01."));
+        $("#stop-button").on("click", () => controlRequest("{{ url_for('api.stop_system') }}", "Parada solicitada. Inspecione o produto antes de retomar."));
+        $("#reset-button").on("click", () => controlRequest("{{ url_for('api.reset_system') }}", "Estado lógico resetado. Itens interrompidos precisam de cancelamento ou nova tentativa explícita."));
+        window.setInterval(() => updateStatus().catch(() => {}), 700);
+        window.setInterval(() => updateDiagnostics().catch(() => {}), 1500);
     });
 </script>
 {% endblock %}

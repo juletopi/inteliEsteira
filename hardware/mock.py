@@ -20,12 +20,14 @@ from hardware.protocol import (
     parse_message,
     validate_command,
 )
+from hardware.telemetry import Telemetry
 
 
 class MockArduino(Arduino):
     mode = "mock"
     port = None
     baudrate = None
+    arrival_source = "simulado"
 
     def __init__(self):
         self._connected = False
@@ -38,6 +40,10 @@ class MockArduino(Arduino):
         self.gripper_state = "home"
         self.conveyor_state = "parada"
         self.destination: str | None = None
+        self.telemetry = Telemetry()
+        self.pickup_zone = "P01"
+        self.sensor_destination = None
+        self._suppress_gripper = defaultdict(int)
 
     def connect(self) -> None:
         with self._lock:
@@ -63,6 +69,9 @@ class MockArduino(Arduino):
     def suppress_next_arrival_event(self) -> None:
         self._suppress_arrival_events += 1
 
+    def suppress_next_gripper_event(self, command="GARRA:PEGAR"):
+        self._suppress_gripper[validate_command(command)] += 1
+
     def execute(
         self,
         command: str,
@@ -81,6 +90,7 @@ class MockArduino(Arduino):
             for _ in range(attempts):
                 frame = encode_message("CMD", cycle_id, normalized)
                 self.command_log.append(frame)
+                self.telemetry.record("TX", parse_message(frame))
 
                 if self._timeouts[normalized] > 0:
                     self._timeouts[normalized] -= 1
@@ -93,7 +103,9 @@ class MockArduino(Arduino):
                     )
 
                 self._apply_command(normalized, cycle_id)
-                return parse_message(encode_message("ACK", cycle_id, normalized))
+                response = parse_message(encode_message("ACK", cycle_id, normalized))
+                self.telemetry.record("RX", response)
+                return response
 
         raise ArduinoTimeoutError(
             f"Arduino nao confirmou {normalized} apos {attempts} tentativa(s)."
@@ -114,6 +126,8 @@ class MockArduino(Arduino):
         deadline = monotonic() + max(0.001, timeout)
         try:
             while True:
+                if not self.is_connected():
+                    raise ArduinoDisconnectedError("Arduino simulado desconectado.")
                 if cancelled is not None and cancelled():
                     raise ArduinoOperationCancelledError(
                         f"Espera pelo evento {expected} interrompida."
@@ -134,6 +148,7 @@ class MockArduino(Arduino):
 
                 event_name_received = message.payload.split(":", 1)[0]
                 if message.cycle_id == cycle_id and event_name_received == expected:
+                    self.telemetry.record("RX", message)
                     return message
                 deferred.append(message)
         finally:
@@ -141,6 +156,36 @@ class MockArduino(Arduino):
                 self._events.put(message)
 
     def _apply_command(self, command: str, cycle_id: str) -> None:
+        if command == "SISTEMA:PING":
+            return
+        if command == "GARRA:AREA:P01":
+            self.pickup_zone = "P01"
+            return
+        completions = {"GARRA:PEGAR": "GARRA_COLETA_CONCLUIDA", "GARRA:SOLTAR": "GARRA_ENTREGA_CONCLUIDA",
+                       "GARRA:HOME": "GARRA_HOME_CONCLUIDO", "GARRA:POSICIONAR:E01": "GARRA_POSICIONAMENTO_CONCLUIDO"}
+        if command in completions:
+            if self._suppress_gripper[command]:
+                self._suppress_gripper[command] -= 1
+            else:
+                self._events.put(parse_message(encode_message("EVT", cycle_id, completions[command])))
+        if command == "GARRA:STOP":
+            self.gripper_state = "parada"
+            return
+        if command.startswith("SENSOR:ARMAR:"):
+            self.sensor_destination = command[13:]
+            return
+        if command.startswith("SENSOR:INICIAR:"):
+            destination = command[15:]
+            if destination != self.sensor_destination:
+                raise ArduinoCommandError("O sensor do destino nao foi armado.")
+            if self._suppress_arrival_events:
+                self._suppress_arrival_events -= 1
+            else:
+                self._events.put(parse_message(encode_message("EVT", cycle_id, f"DESTINO_ALCANCADO:{destination}:SIMULADO")))
+            return
+        if command == "SENSOR:DESARMAR":
+            self.sensor_destination = None
+            return
         if command == "GARRA:PEGAR":
             self.gripper_state = "segurando"
             return
@@ -149,6 +194,9 @@ class MockArduino(Arduino):
             return
         if command == "GARRA:HOME":
             self.gripper_state = "home"
+            return
+        if command == "GARRA:POSICIONAR:E01":
+            self.gripper_state = "sobre_esteira"
             return
         if command.startswith("DESTINO:"):
             self.destination = command.removeprefix("DESTINO:")

@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "aruco_dictionary": "DICT_4X4_250",
+  "products": [
+    {
+      "produto_id": "PROD-001",
+      "uf": "SP",
+      "ativo": false,
+      "aruco_id": 1,
+      "excluido": true
+    },
+    {
+      "produto_id": "PROD-0087",
+      "uf": "CE",
+      "ativo": false,
+      "aruco_id": 0,
+      "excluido": true
+    },
+    {
+      "produto_id": "PROD-CENTRO-01",
+      "uf": "GO",
+      "ativo": true,
+      "aruco_id": 2
+    },
+    {
+      "produto_id": "PROD-CENTRO-02",
+      "uf": "MT",
+      "ativo": true,
+      "aruco_id": 3
+    },
+    {
+      "produto_id": "PROD-NORDESTE-01",
+      "uf": "CE",
+      "ativo": true,
+      "aruco_id": 4
+    },
+    {
+      "produto_id": "PROD-NORDESTE-02",
+      "uf": "BA",
+      "ativo": true,
+      "aruco_id": 5
+    },
+    {
+      "produto_id": "PROD-NORTE-01",
+      "uf": "AM",
+      "ativo": true,
+      "aruco_id": 6
+    },
+    {
+      "produto_id": "PROD-NORTE-02",
+      "uf": "RO",
+      "ativo": true,
+      "aruco_id": 7
+    },
+    {
+      "produto_id": "PROD-SUDESTE-01",
+      "uf": "SP",
+      "ativo": true,
+      "aruco_id": 8
+    },
+    {
+      "produto_id": "PROD-SUDESTE-02",
+      "uf": "MG",
+      "ativo": true,
+      "aruco_id": 9
+    },
+    {
+      "produto_id": "PROD-SUL-01",
+      "uf": "PR",
+      "ativo": true,
+      "aruco_id": 10
+    },
+    {
+      "produto_id": "PROD-SUL-02",
+      "uf": "PR",
+      "ativo": false,
+      "aruco_id": 11,
+      "excluido": true
+    },
+    {
+      "produto_id": "PROD-SUL-03",
+      "uf": "RS",
+      "ativo": true,
+      "aruco_id": 12
+    }
+  ]
+}

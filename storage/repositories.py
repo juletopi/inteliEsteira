@@ -346,6 +346,14 @@ class CycleRepository:
             ).fetchone()
         return int(row["total"])
 
+    def destination_counts(self) -> dict:
+        """Balanceamento por ciclos confirmados; nao mede ocupacao fisica."""
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT destination, COUNT(*) AS total FROM cycles WHERE status = 'FINALIZADO' GROUP BY destination"
+            ).fetchall()
+        return {row["destination"]: row["total"] for row in rows if row["destination"]}
+
     @staticmethod
     def _serialize(row) -> dict:
         return {

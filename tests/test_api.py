@@ -60,7 +60,9 @@ class ApiTests(unittest.TestCase):
         html = response.get_data(as_text=True)
 
         for element_id in (
-            "product-id",
+            "queue-product",
+            "queue-table-body",
+            "add-queue-button",
             "check-button",
             "start-button",
             "stop-button",
@@ -71,8 +73,10 @@ class ApiTests(unittest.TestCase):
                 self.assertIn(f'id="{element_id}"', html)
 
         self.assertNotIn('id="product-state"', html)
-        self.assertIn("/api/route", html)
-        self.assertIn("/api/cycles", html)
+        self.assertNotIn('id="product-id"', html)
+        self.assertIn("/api/queue", html)
+        self.assertIn("/api/flow/start", html)
+        self.assertIn("/api/diagnostics", html)
         self.assertIn("/api/system/stop", html)
         self.assertIn("/api/system/reset", html)
 

@@ -32,6 +32,10 @@ class MockQRCodeCamera:
             raise CameraError("A leitura da camera foi interrompida.")
         return self.read_qrcode(self.capture_frame())
 
+    def wait_until_clear(self, timeout=0.5, cancelled=None):
+        # O simulador considera a unidade retirada; nao consome a proxima leitura.
+        return not (cancelled is not None and cancelled())
+
     def is_connected(self) -> bool:
         return self._connected
 

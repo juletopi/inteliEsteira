@@ -13,7 +13,7 @@ def get_system_status():
     snapshot["esteira_conectada"] = conveyor_device.is_connected()
     snapshot["esteira_modo"] = getattr(conveyor_device, "mode", "desconhecido")
     snapshot["esteira_confirmacao"] = getattr(
-        conveyor_device, "arrival_source", "evento_do_controlador"
+        controller.conveyor, "arrival_source", "evento_do_controlador"
     )
     snapshot["ev3_host"] = (
         getattr(conveyor_device, "host", None)
@@ -41,4 +41,9 @@ def get_system_status():
     snapshot["total_ciclos"] = current_app.extensions[
         "cycle_repository"
     ].count_completed()
+    snapshot["fila"] = current_app.extensions["workflow"].snapshot()
+    snapshot["area_coleta"] = controller.gripper.pickup_zone
+    snapshot["perfil_garra_calibrado"] = controller.gripper.calibrated
+    snapshot["arduino_ping_em"] = arduino.telemetry.last_ping_at if hasattr(arduino, "telemetry") else None
+    snapshot["modo_teste"] = snapshot["hardware_modo"] in {"mock", "simulator"}
     return snapshot

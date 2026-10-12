@@ -444,8 +444,8 @@ class EV3APITests(TCPFixture, unittest.TestCase):
                 self.assertEqual(response.get_json()["destino"], destination)
                 self.assertEqual(self.motion.codes[-1], DESTINATION_TO_CODE[destination])
         arduino_commands = [parse_message(frame).payload for frame in app.extensions["arduino"].command_log]
-        self.assertEqual(len(arduino_commands), 30)
-        self.assertTrue(all(command.startswith("GARRA:") for command in arduino_commands))
+        self.assertTrue(all(command.startswith("GARRA:") or command == "SISTEMA:PING" for command in arduino_commands))
+        self.assertEqual(arduino_commands.count("GARRA:POSICIONAR:E01"), 10)
         status = client.get("/api/status").get_json()
         self.assertTrue(status["arduino"])
         self.assertTrue(status["esteira_conectada"])
@@ -460,7 +460,8 @@ class EV3APITests(TCPFixture, unittest.TestCase):
         response = app.test_client().post("/api/cycles", json={"qr_code": '{"produto_id":"P1"}'})
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.get_json()["erro"]["codigo"], "EV3_DISCONNECTED")
-        self.assertEqual(app.extensions["arduino"].command_log, [])
+        commands = [parse_message(frame).payload for frame in app.extensions["arduino"].command_log]
+        self.assertTrue(all(command in {"SISTEMA:PING", "GARRA:STOP"} for command in commands))
         status = app.test_client().get("/api/status").get_json()
         self.assertTrue(status["arduino"])
         self.assertFalse(status["esteira_conectada"])
