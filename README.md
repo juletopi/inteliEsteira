@@ -30,6 +30,9 @@
 
 ## Sobre o projeto
 
+Para testar a integracao pelo painel sem equipamentos e preparar a bancada
+fisica, siga o [guia de teste integrado](docs/teste-integrado.md).
+
 O **InteliEsteira** é um projeto para monitorar e automatizar uma linha de produção com esteira, garra mecânica, câmera e Arduino.
 
 O sistema segue uma separação de responsabilidades:
@@ -274,11 +277,12 @@ IDLE
 Comandos produzidos para o Arduino simulado:
 
 ```text
+CMD:<ciclo>:DESTINO:R08
+CMD:<ciclo>:GARRA:AREA:P01
 CMD:<ciclo>:GARRA:PEGAR
 CMD:<ciclo>:GARRA:POSICIONAR:E01
 CMD:<ciclo>:GARRA:SOLTAR
 CMD:<ciclo>:GARRA:HOME
-CMD:<ciclo>:DESTINO:R08
 CMD:<ciclo>:ESTEIRA:START
 EVT:<ciclo>:DESTINO_ALCANCADO:R08
 CMD:<ciclo>:ESTEIRA:STOP
@@ -308,8 +312,8 @@ $env:CAMERA_INDEX = "0"
 python start.py
 ```
 
-Nesse modo, `POST /api/cycles` não aceita `qr_code` no corpo. A execução move a
-garra, posiciona o objeto e o backend procura o QR diretamente nos frames:
+Nesse modo, `POST /api/cycles` não aceita `qr_code` no corpo. O backend identifica
+o QR/ArUco nos frames e valida o destino antes de autorizar a coleta pela garra:
 
 ```http
 POST /api/cycles
@@ -397,9 +401,15 @@ POST /api/system/connect
 GET  /api/status
 ```
 
-Depois que o time definir pinos, limites e quantidade de passos, o firmware de
-bancada deverá receber as ações físicas dos motores e sensores nos pontos em
-que hoje apenas envia `ACK` e `EVT`.
+O firmware `mock.ino` continua próprio para testes de comunicação, sem acionar
+motores. Para a montagem física, use o calibrador integrado descrito abaixo.
+
+O firmware `arduino/mearm_calibrador/`, do Freysta, também implementa o protocolo
+do backend. Ele reutiliza os pontos Y/X/neutro, os limites e a abertura/fechamento
+salvos na EEPROM. Após conferir o ciclo manual, `AUTO:VALIDAR` libera esses dados
+para o automático; alterações na calibração exigem nova validação. Os sensores
+digitais de saída são configurados em `backend_config.h`, separadamente do HC-SR04
+de presença. Veja o [guia de preparação e teste](docs/teste-integrado.md).
 
 ### Esteira LEGO EV3 com Python
 
@@ -448,7 +458,10 @@ Referência: [motores Pybricks 2.x](https://docs.pybricks.com/en/v2.0/ev3devices
 3. No terminal SSH do EV3, a partir dessa pasta, execute
    `pybricks-micropython server.py`. A ponte escuta na porta TCP 8765.
    Opcionalmente, restrinja o IP de escuta: `pybricks-micropython server.py <IP_DO_EV3> 8765`.
-4. No PowerShell do computador, configure e inicie o backend:
+4. Depois de implementar e testar os perfis da garra e instalar os sensores de
+   chegada no Arduino, configure e inicie o backend no PowerShell. O
+   [guia de teste integrado](docs/teste-integrado.md) também oferece um script
+   sem reloader e uma bancada virtual para quem ainda não tem os equipamentos.
 
 ```powershell
 $env:HARDWARE_MODE = "serial"
@@ -458,16 +471,20 @@ $env:EV3_HOST = "<IP_DO_EV3>"
 $env:EV3_PORT = "8765"
 $env:EV3_TOKEN = "<MESMA_CHAVE_DO_TOKEN_TXT>"
 $env:CAMERA_MODE = "opencv"
+$env:GRIPPER_PROFILE_CALIBRATED = "1"    # Somente depois de calibrar o firmware físico.
+$env:ARRIVAL_SENSOR_MODE = "arduino"
 $env:ARRIVAL_TIMEOUT = "35"
 .\.venv\Scripts\python.exe start.py
 ```
 
 Use **Conexão → Tentar conectar**. Depois de inspecionar a montagem e posicionar
 manualmente a referência inicial, use **Resetar** e execute um produto por vez.
-O frontend continua chamando `POST /api/cycles`; não envia `codR` nem escolhe a
+O Dashboard inicia a fila com `POST /api/flow/start`; a API também oferece ciclos
+individuais em `POST /api/cycles`. O frontend não envia `codR` nem escolhe a
 UF por conta própria. O backend só movimenta a garra depois de conectar ambos
-os controladores. Sem firmware físico da garra, `HARDWARE_MODE=mock` permite
-testar apenas a esteira real, mas a coleta/soltura do objeto será simulada.
+os controladores. O padrão `REQUIRE_PHYSICAL_ARRIVAL=1` exige sensor real no
+Arduino para operar o EV3. Sem os equipamentos completos, use a bancada virtual
+descrita no guia; firmware mock não comprova coleta ou chegada físicas.
 
 `GET /api/status` diferencia `arduino` e `esteira_conectada`, informa
 `esteira_modo`, `ev3_host`, `ev3_porta` e nunca expõe a chave. `POST
@@ -512,6 +529,7 @@ $env:CONVEYOR_MODE = "ev3"
 $env:EV3_HOST = "127.0.0.1"
 $env:EV3_PORT = "8765"
 $env:EV3_TOKEN = "chave-apenas-teste-local-1234"
+$env:REQUIRE_PHYSICAL_ARRIVAL = "0"      # Exclusivamente para este teste com simuladores.
 .\.venv\Scripts\python.exe start.py
 ```
 

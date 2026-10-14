@@ -1,0 +1,16 @@
+[Unit]
+Description=InteliEsteira - ponte TCP do EV3
+After=network.target
+
+[Service]
+Type=simple
+User=robot
+WorkingDirectory=/home/robot/inteliEsteira/ev3
+ExecStart=/usr/bin/pybricks-micropython /home/robot/inteliEsteira/ev3/server.py
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

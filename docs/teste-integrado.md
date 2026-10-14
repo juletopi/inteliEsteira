@@ -1,0 +1,202 @@
+# Testar o painel, a garra e a esteira
+
+O controle de cada unidade passa por HTTP (painel/Flask), serial (Arduino/garra)
+e TCP autenticado (Flask/EV3). O programa `server.py` deve estar ativo no EV3;
+ele aguarda comandos e nao inicia transporte por conta propria. `main.py` e o
+teste manual que pede um codigo de regiao no terminal.
+
+## 1. Testar agora, sem os equipamentos
+
+Na raiz do projeto, com as dependencias da `.venv` instaladas:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.bancada --smoke-test
+```
+
+O comando usa sockets locais de verdade para os dois controladores, banco
+temporario e camera simulada. Testa dez ciclos, balanceamento R01–R10, bloqueio
+de etiqueta fora da ordem e registro de chegada simulada. Nao acessa a COM, o
+EV3 fisico ou `data/inteliesteira.db`. Finaliza e encerra os simuladores.
+
+Para operar manualmente pelo painel:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.bancada --database output/bancada.db
+```
+
+Abra http://127.0.0.1:5001. Em Dashboard, adicione produtos TESTE-AM/PR/SP/CE/GO a
+fila, clique em **Iniciar fluxo** e use **Simular leitura** com o produto esperado.
+Confira mensagens e confirmacoes no diagnostico. **Parar** interrompe; **Resetar**
+prepara a retomada logica. Um item interrompido requer inspecao e nova tentativa
+ou cancelamento. O transporte e a chegada exibidos aqui sao simulados.
+
+O argumento `--database` preserva catalogo, IDs ArUco, fila e historico entre
+aberturas. Sem ele, a bancada comeca vazia a cada execucao. O teste automatico
+sempre usa banco temporario. A bancada recusa o caminho do banco principal.
+Nao abra duas instancias usando o mesmo arquivo.
+
+## 2. Testar ArUco com a webcam
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.bancada --camera opencv --database output/bancada.db
+```
+
+Na tela Produtos, baixe e imprima as etiquetas dos produtos desse banco. Planeje
+a fila e apresente uma etiqueta por vez. Agora a leitura vem da camera, enquanto
+garra, motores e chegada continuam virtuais. Retire a etiqueta anterior do
+enquadramento entre unidades. Etiquetas do banco principal nao necessariamente
+tem os mesmos IDs no banco da bancada; gere as etiquetas na propria bancada.
+
+`CAMERA_INDEX` seleciona a webcam. `CAMERA_PICKUP_ROI=x,y,largura,altura` delimita
+o retangulo em fracoes de 0 a 1. O padrao `0,0,1,1` usa o frame inteiro: ajuste
+esse valor ao gabarito P01 real. A moldura aparece no preview. O retangulo
+autoriza uma coleta fixa; nao calcula coordenadas nem alcance do braco.
+
+## 3. Preparar a garra real
+
+Abra `arduino/mearm_calibrador/mearm_calibrador.ino` na IDE Arduino, mantendo
+`backend_config.h` e `backend_protocol.h` na mesma pasta, com a biblioteca Servo.
+O sketch do Freysta agora atende tanto o calibrador quanto CMD/ACK/EVT/ERR.
+Nao use `mock.ino` para mover o braco. O firmware separado com `profiles.h`
+foi substituido pela integracao no calibrador.
+
+Os dados existentes sao reaproveitados nos mesmos enderecos da EEPROM:
+
+| Dado do calibrador | Uso automatico |
+| --- | --- |
+| Ponto Y | Coleta P01 |
+| Ponto X | Entrega E01 |
+| Ponto neutro N | Retorno HOME e referencia logica inicial |
+| LIM e GCALIB | Limites e abertura/fechamento dos mesmos servos |
+| SPEED | Velocidade da sessao; padrao original ao reiniciar |
+| SENSOR:ON/OFF | Configuracao de presenca do HC-SR04, preservada na EEPROM |
+
+Confira e grave Y, X, N, limites e GCALIB no calibrador, teste as trajetorias e
+o ciclo `RUN`, e envie `AUTO:VALIDAR` com o braco parado. Nao ha copia manual de
+angulos para outro arquivo. A validacao nao move motores e registra uma assinatura
+dos dados conferidos, nos bytes 96–99 do Uno. `AUTO:STATUS` consulta a liberacao;
+`AUTO:INVALIDAR` remove somente a liberacao. Dados antigos incompletos ou fora
+dos limites sao recusados para operacao automatica.
+
+Salvar novamente pontos, limites ou GCALIB exige nova validacao. O backend e o
+`RUN` compartilham as mesmas etapas, altura intermediaria 80/80 limitada pelos
+limites, pausas e velocidade do ciclo original. Confirme o caminho entre pontos,
+nao apenas as poses finais. A etapa tem timeout local de 25 s por padrao; mantenha
+o timeout do backend maior. Consulte o [guia do firmware](../arduino/mearm_calibrador/README.md).
+
+O boot nao energiza os servos. Depois de inspecionar/alinha-los, envie Reset pelo
+painel antes de iniciar. Reset nao faz homing fisico. Stop/watchdog suspendem os
+passos e mantem o ultimo comando dos servos; inspecione o estado antes de retomar.
+Os eventos de garra indicam fim da trajetoria comandada, sem encoder ou sensor
+de preensao; nao comprovam que o objeto foi segurado. Fonte e GND devem seguir a
+montagem validada no [guia do calibrador](../arduino/mearm_calibrador/README.md).
+
+## 4. Confirmar a chegada fisica
+
+Em `arduino/mearm_calibrador/backend_config.h`, configure a lista
+`INTELIESTEIRA_ARRIVAL_PINS`: a primeira entrada e R01, ate a decima para R10.
+Ela inicializa `BACKEND_ARRIVAL_PINS`. `-1` significa nao instalado e bloqueia a rota.
+Confirme a placa, os pinos disponiveis, a tensao e a polaridade dos sensores
+ANTES de conecta-los. Nao usa o HC-SR04 do calibrador como comprovacao de destino.
+Sensores nao podem compartilhar pinos entre si, com os servos, serial ou HC-SR04.
+
+As entradas usam INPUT_PULLUP; ajuste `BACKEND_SENSOR_ACTIVE_LOW` ao sensor digital
+validado. Configure apenas as saidas instaladas e teste cada uma. Para um teste
+fisico de somente uma regiao, as duas saidas dessa regiao devem estar operantes,
+pois o backend balanceia as unidades entre elas.
+
+O backend arma o destino antes da coleta e inicia sua observacao apos START.
+Sensor bloqueado ao armar/iniciar causa erro. Somente uma nova borda, apos nivel
+livre estavel e com debounce durante transporte, emite
+`EVT:ciclo:DESTINO_ALCANCADO:Rxx:SENSOR`. Reenvios nao repetem movimentos.
+O receptor lembra oito IDs aposentados em RAM; reiniciar a placa perde esse
+historico. Reset/retomada exigem inspecao do produto. Heartbeats ausentes por
+quatro segundos interrompem a operacao. Parada de software nao substitui o
+dispositivo de parada fisica da bancada.
+
+## 5. Fazer o EV3 iniciar o receptor automaticamente
+
+Copie os arquivos Python de `ev3/` para o EV3. Crie `token.txt` nessa pasta, com
+uma chave aleatoria de 16 a 128 letras/numeros, `_` ou `-`. Guarde a mesma chave
+em um arquivo local no PC, fora do Git. Nao envie a chave pelo painel.
+
+Pelo SSH, confirme primeiro:
+
+```sh
+command -v pybricks-micropython
+cd /home/robot/inteliEsteira/ev3
+pybricks-micropython server.py
+```
+
+O caminho acima e um EXEMPLO. Confirme tambem o usuario e o ambiente
+Pybricks 2.x/ev3dev do colaborador. Depois de verificar o receptor manualmente,
+pare-o e adapte `ev3/inteliesteira.service.example` aos caminhos reais. O exemplo
+usa systemd, usuario `robot` e executavel `/usr/bin/pybricks-micropython`.
+O usuario deve ter acesso aos motores e ao arquivo token. Instale no proprio EV3:
+
+```sh
+sudo cp inteliesteira.service.example /etc/systemd/system/inteliesteira.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now inteliesteira
+systemctl status inteliesteira
+journalctl -u inteliesteira -n 50
+```
+
+Execute o `cp` da pasta que contem o arquivo adaptado. Reinicie o EV3 e confirme
+que o receptor volta a escutar em 8765, sem movimento automatico. Nao rode o
+teste manual `main.py` junto com o servico, pois ambos usam os motores.
+Para desativar: `sudo systemctl disable --now inteliesteira`.
+Referencia: [servicos systemd](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html).
+
+## 6. Operar o conjunto real pelo painel
+
+Com IP, COM, perfis, sensores e retangulo P01 confirmados:
+
+```powershell
+.\scripts\iniciar-real.ps1 -Ev3Host <IP_REAL> -ArduinoPort <COM_REAL> `
+  -TokenFile <ARQUIVO_LOCAL_DA_CHAVE> -PickupRoi <X,Y,LARGURA,ALTURA> -ProfilesCalibrated
+```
+
+Substitua os campos entre `<...>`; nao execute os marcadores literalmente. Use
+aspas no valor de `-PickupRoi`, por exemplo no valor que voce mediu para P01.
+O script mantem `REQUIRE_PHYSICAL_ARRIVAL=1`, exige sensor no Arduino e inicia
+Flask sem reloader. Nao grava a placa, instala servicos ou calibra motores.
+Feche o monitor serial e o calibrador para liberar a COM ao backend.
+
+Abra http://127.0.0.1:5000 e use **Verificar comunicacao → Resetar → Iniciar fluxo**.
+Comece com uma unidade, confira a trajetoria e a chegada na saida esperada; depois
+teste as duas saidas de cada regiao, parada durante movimento, etiqueta incorreta,
+sensor bloqueado e perda de conexao. O proximo item so avanca apos conclusao.
+O EV3 ainda precisa de verificacao das rotacoes, referencia inicial e retorno do
+seletor; o servico nao corrige calibracao mecanica. A bancada virtual nao aprova
+essas condicoes fisicas.
+
+## Persistencia da aplicacao principal
+
+`data/inteliesteira.db` mantem produtos, vinculos ArUco, fila e historico entre
+reinicios. `data/catalogo-inicial.json` importa apenas em banco vazio; nao apaga
+nem sobrescreve o banco existente ao abrir. Exportar/importar JSON transporta o
+catalogo, nao todo o historico operacional. Para migrar tudo, use backup SQLite.
+
+## Verificar o firmware sem gravar a placa
+
+Com Arduino CLI, core `arduino:avr` e biblioteca Servo instalados:
+
+```powershell
+arduino-cli compile --fqbn arduino:avr:uno arduino/mearm_calibrador
+```
+
+Para executar o proprio sketch em um computador, com servos, relogio e EEPROM
+simulados, informe um compilador C++17 (`g++`, `clang++` ou `zig`):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.testar_firmware --compiler <CAMINHO_DO_COMPILADOR>
+```
+
+Os cenarios cobrem as etapas usando Y/X/N salvos, ACK antes de movimento, reenvios,
+parada e reset durante movimento, watchdog, timeout, ordem/ciclo incorretos,
+invalidacao e corrupcao da calibracao, recarga da EEPROM, presenca HC-SR04,
+comandos manuais, overflow serial e bordas dos sensores de destino. O host usa
+registros EEPROM tipados porque `int` tem tamanho diferente no PC e no AVR;
+o layout AVR original e verificado por `static_assert` na compilacao do Uno.
+Esses testes nao verificam alcance, corrente, preensao ou colisoes reais.

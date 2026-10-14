@@ -21,6 +21,18 @@ ev3/token.txt
 data/*.db
 data/*.db-*
 
+# Ferramentas e resultados locais da bancada (nao sao firmware para gravar).
+output/arduino-toolchain/
+output/arduino-build*/
+output/firmware-compile-only/
+output/firmware-tools/
+output/firmware-native*/
+output/firmware*-compile.log
+output/test-tmp/
+output/test-*.log
+output/bancada*.db
+output/bancada*.db-*
+
 # OS
 .vscode/
 .idea/

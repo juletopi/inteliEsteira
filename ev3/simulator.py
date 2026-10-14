@@ -2,9 +2,12 @@
 
 import argparse
 import os
+import socketserver
+from threading import Lock
 from time import monotonic
 
-from ev3.server import run_server
+from ev3.bridge import BridgeController
+from ev3.server import run_server, serve_client, validate_token
 
 
 class SimulatedMotion:
@@ -25,6 +28,35 @@ class SimulatedMotion:
 
     def stop(self):
         self.deadline = None
+
+
+class EV3Simulator(socketserver.ThreadingTCPServer):
+    """Ponte real em localhost, com ciclo de vida controlavel pela bancada."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+
+    def __init__(self, address=("127.0.0.1", 0), *, token, delay=0.1):
+        if address[0] != "127.0.0.1":
+            raise ValueError("O simulador aceita apenas localhost.")
+        validate_token(token)
+        self.token = token
+        self.motion = SimulatedMotion(delay)
+        self.bridge = BridgeController(self.motion)
+        self.client_lock = Lock()
+        super().__init__(address, _Handler)
+
+
+class _Handler(socketserver.BaseRequestHandler):
+    def handle(self):
+        if not self.server.client_lock.acquire(blocking=False):
+            return
+        try:
+            serve_client(self.request, self.server.bridge, self.server.token)
+        except (OSError, ValueError, RuntimeError):
+            pass
+        finally:
+            self.server.client_lock.release()
 
 
 if __name__ == "__main__":

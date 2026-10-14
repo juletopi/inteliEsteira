@@ -75,8 +75,9 @@ struct AxisLimits {
 };
 
 // Buffer de leitura serial não-bloqueante
-char serialBuf[32];
+char serialBuf[96];
 byte bufIdx = 0;
+bool serialOverflow = false;
 bool cicloEmExecucao = false;
 bool abortarCiclo = false;
 
@@ -91,6 +92,18 @@ unsigned long sensorCandidateSince = 0;
 unsigned long sensorClearSince = 0;
 bool sensorCandidate = false;
 bool sensorPresent = false;
+
+#if defined(__AVR__)
+static_assert(sizeof(Ponto) == 8 && sizeof(AxisLimits) == 16, "Layout EEPROM AVR alterado");
+static_assert(EEPROM_LIMITS_DATA_ADDR + sizeof(AxisLimits) <= EEPROM_NEUTRAL_MAGIC_ADDR, "Limites sobrepoem neutro");
+static_assert(EEPROM_NEUTRAL_DATA_ADDR + sizeof(Ponto) <= EEPROM_SENSOR_MAGIC_ADDR, "Neutro sobrepoe sensor");
+#endif
+
+// A ponte usa as mesmas variaveis, EEPROM e rotinas do calibrador.
+bool executarEtapaXY(byte etapa);
+bool lerLinhaSerial(char *destino, size_t capacidade);
+#include "backend_config.h"
+#include "backend_protocol.h"
 
 void salvarConfigSensor() {
   EEPROM.put(EEPROM_SENSOR_MAGIC_ADDR, EEPROM_SENSOR_MAGIC);
@@ -147,29 +160,23 @@ void monitorarSensor() {
 }
 
 bool verificarParadaCiclo() {
-  while (Serial.available() > 0) {
-    char c = Serial.read();
-    if (c == '\n' || c == '\r') {
-      serialBuf[bufIdx] = '\0';
-      if (strcmp(serialBuf, "STOP") == 0 || strcmp(serialBuf, "FREE") == 0) {
-        abortarCiclo = true;
-        if (sBase.attached()) sBase.detach();
-        if (sBraco.attached()) sBraco.detach();
-        if (sCotovelo.attached()) sCotovelo.detach();
-        if (sGarra.attached()) sGarra.detach();
-        servosAtivos = false;
-        garraAtiva = false;
-        Serial.println(F("[CICLO] Interrompido; servos soltos."));
-        bufIdx = 0;
-        return true;
-      }
-      bufIdx = 0; // Outros comandos são ignorados enquanto o ciclo roda.
-    } else if (bufIdx < sizeof(serialBuf) - 1) {
-      serialBuf[bufIdx++] = c;
-    } else {
-      bufIdx = 0;
+  char linha[sizeof(serialBuf)];
+  while (lerLinhaSerial(linha, sizeof(linha))) {
+    // ACK de repeticoes, PING e STOP continuam atendidos durante moverSuave.
+    if (processarFrameBackend(linha)) continue;
+    if (strcmp(linha, "STOP") == 0 || strcmp(linha, "FREE") == 0) {
+      backendParar();
+      if (sBase.attached()) sBase.detach();
+      if (sBraco.attached()) sBraco.detach();
+      if (sCotovelo.attached()) sCotovelo.detach();
+      if (sGarra.attached()) sGarra.detach();
+      servosAtivos = false;
+      garraAtiva = false;
+      Serial.println(F("[CICLO] Interrompido; servos soltos."));
+      return true;
     }
   }
+  backendMonitorar();
   return abortarCiclo;
 }
 
@@ -313,6 +320,7 @@ void inicializarEEPROMSePreciso() {
 }
 
 void salvarLimites() {
+  backendInvalidarCalibracao();
   inicializarEEPROMSePreciso();
   AxisLimits current = {minB, maxB, minBraco, maxBraco, minCotovelo, maxCotovelo, minG, maxG};
   EEPROM.put(EEPROM_LIMITS_MAGIC_ADDR, EEPROM_LIMITS_MAGIC);
@@ -338,6 +346,7 @@ bool atualizarLimite(char eixo, int novoMin, int novoMax) {
 }
 
 void salvarPontoY() {
+  backendInvalidarCalibracao();
   pontoY = {angB, angBraco, angCotovelo, angG};
   inicializarEEPROMSePreciso();
   EEPROM.put(2, pontoY);
@@ -346,6 +355,7 @@ void salvarPontoY() {
 }
 
 void salvarPontoX() {
+  backendInvalidarCalibracao();
   pontoX = {angB, angBraco, angCotovelo, angG};
   inicializarEEPROMSePreciso();
   EEPROM.put(2 + sizeof(Ponto), pontoX);
@@ -354,6 +364,7 @@ void salvarPontoX() {
 }
 
 void salvarPontoNeutro() {
+  backendInvalidarCalibracao();
   pontoNeutro = {angB, angBraco, angCotovelo, angG};
   inicializarEEPROMSePreciso();
   EEPROM.put(EEPROM_NEUTRAL_MAGIC_ADDR, EEPROM_NEUTRAL_MAGIC);
@@ -366,6 +377,7 @@ void salvarPontoNeutro() {
 }
 
 void salvarGarraCalib(int aberta, int fechada) {
+  backendInvalidarCalibracao();
   angGarraAberta  = constrain(aberta, minG, maxG);
   angGarraFechada = constrain(fechada, minG, maxG);
   inicializarEEPROMSePreciso();
@@ -380,7 +392,7 @@ void salvarGarraCalib(int aberta, int fechada) {
 }
 
 // =========================================================================
-// 5. MOVIMENTAÇÃO SUAVE E COORDENADA (Braço 11 + Cotovelo 9)
+// 5. MOVIMENTAÇÃO SUAVE E COORDENADA (Braço 11 + Cotovelo 6)
 // =========================================================================
 void moverSuave(int destB, int destBraco, int destCotovelo, int destG, int delayMs = 16) {
   // A posição gravada passa a ser a origem confiável de qualquer movimento seguinte.
@@ -549,6 +561,35 @@ void testarPontoSalvo(const Ponto &p, const __FlashStringHelper *nome) {
   }
 }
 
+// As mesmas etapas atendem RUN manual e comandos individuais do backend.
+// Preserva os pontos salvos, altura intermediaria 80/80 (limitada por moverSuave),
+// velocidades e pausas do ciclo original do Freysta.
+bool moverEtapaXY(int base, int braco, int cotovelo, int garra, int pausa) {
+  moverSuave(base, braco, cotovelo, garra, velocidadeMs);
+  if (abortarCiclo) return false;
+  aguardarCiclo(pausa);
+  return !abortarCiclo;
+}
+
+bool executarEtapaXY(byte etapa) {
+  switch (etapa) {
+    case 0: // Coleta Y/P01, termina levantado segurando.
+      return moverEtapaXY(pontoY.base, 80, 80, angGarraAberta, 150) &&
+             moverEtapaXY(pontoY.base, pontoY.braco, pontoY.cotovelo, angGarraAberta, 150) &&
+             moverEtapaXY(pontoY.base, pontoY.braco, pontoY.cotovelo, angGarraFechada, 300) &&
+             moverEtapaXY(pontoY.base, 80, 80, angGarraFechada, 150);
+    case 1: // Posiciona X/E01 sem soltar.
+      return moverEtapaXY(pontoX.base, 80, 80, angGarraFechada, 150) &&
+             moverEtapaXY(pontoX.base, pontoX.braco, pontoX.cotovelo, angGarraFechada, 150);
+    case 2: // Entrega e afasta da esteira.
+      return moverEtapaXY(pontoX.base, pontoX.braco, pontoX.cotovelo, angGarraAberta, 250) &&
+             moverEtapaXY(pontoX.base, 80, 80, angGarraAberta, 0);
+    case 3:
+      return moverEtapaXY(pontoNeutro.base, pontoNeutro.braco, pontoNeutro.cotovelo, pontoNeutro.garra, 0);
+  }
+  return false;
+}
+
 // Ciclo completo Estoque (Y) -> Esteira (X), com interrupção por STOP/FREE.
 void executarCicloXY() {
   if (cicloEmExecucao) return;
@@ -557,48 +598,8 @@ void executarCicloXY() {
   bufIdx = 0;
   Serial.println(F("[ARDUINO] Iniciando fluxo completo Y -> X. Envie STOP para interromper."));
 
-  moverSuave(pontoY.base, 80, 80, angGarraAberta, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  aguardarCiclo(150);
-  if (abortarCiclo) goto fimCiclo;
-
-  moverSuave(pontoY.base, pontoY.braco, pontoY.cotovelo, angGarraAberta, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  aguardarCiclo(150);
-  if (abortarCiclo) goto fimCiclo;
-
-  moverSuave(pontoY.base, pontoY.braco, pontoY.cotovelo, angGarraFechada, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  aguardarCiclo(300);
-  if (abortarCiclo) goto fimCiclo;
-
-  moverSuave(pontoY.base, 80, 80, angGarraFechada, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  aguardarCiclo(150);
-  if (abortarCiclo) goto fimCiclo;
-
-  moverSuave(pontoX.base, 80, 80, angGarraFechada, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  aguardarCiclo(150);
-  if (abortarCiclo) goto fimCiclo;
-
-  moverSuave(pontoX.base, pontoX.braco, pontoX.cotovelo, angGarraFechada, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  aguardarCiclo(150);
-  if (abortarCiclo) goto fimCiclo;
-
-  moverSuave(pontoX.base, pontoX.braco, pontoX.cotovelo, angGarraAberta, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  aguardarCiclo(250);
-  if (abortarCiclo) goto fimCiclo;
-
-  moverSuave(pontoX.base, 80, 80, angGarraAberta, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  moverSuave(pontoNeutro.base, pontoNeutro.braco, pontoNeutro.cotovelo, pontoNeutro.garra, velocidadeMs);
-  if (abortarCiclo) goto fimCiclo;
-  Serial.println(F("[ARDUINO] Fluxo completo finalizado."));
-
-fimCiclo:
+  for (byte etapa = 0; etapa < 4; ++etapa) if (!executarEtapaXY(etapa)) break;
+  if (!abortarCiclo) Serial.println(F("[ARDUINO] Fluxo completo finalizado."));
   cicloEmExecucao = false;
   if (abortarCiclo) Serial.println(F("[CICLO] Abortado pelo usuário."));
 }
@@ -689,6 +690,15 @@ void executarTesteCompleto() {
 // =========================================================================
 void processarComando(const char* cmd) {
   if (strlen(cmd) == 0) return;
+  if (processarFrameBackend(cmd) || processarComandoAuto(cmd)) return;
+  // Nao deixa o calibrador alterar posicoes ou EEPROM entre etapas automaticas.
+  if (backendOcupado()) {
+    if (strcmp(cmd, "STOP") == 0 || strcmp(cmd, "FREE") == 0 || strcmp(cmd, "DETACH") == 0) backendParar();
+    else if (strcmp(cmd, "?") != 0 && strcmp(cmd, "STATUS") != 0) {
+      Serial.println(F("[BLOQUEADO] Backend possui o ciclo; envie STOP antes de calibrar."));
+      return;
+    }
+  }
 
   // Posição absoluta enviada pelo fluxo gravado na interface Web.
   if (strncmp(cmd, "POSE:", 5) == 0) {
@@ -933,31 +943,49 @@ void setup() {
   // Mantém os servos soltos no boot; cada eixo energiza ao receber comando.
   Serial.println(F("[ARDUINO] Calibrador manual MeArm pronto."));
   carregarMemoria();
+  // Referencia logica inicial vem da mesma pose neutra salva pelo calibrador.
+  // Nenhum servo e energizado: alinhar fisicamente a montagem antes de operar.
+  angB = pontoNeutro.base; angBraco = pontoNeutro.braco;
+  angCotovelo = pontoNeutro.cotovelo; angG = destinoGarra = pontoNeutro.garra;
   Serial.println(F("[ARDUINO] Pronto para calibracao Web manual!"));
   carregarConfigSensor();
+  backendSetup();
 }
 
 // =========================================================================
 // 8. LOOP (Não-bloqueante com descarte em overflow)
 // =========================================================================
-void loop() {
+bool lerLinhaSerial(char *destino, size_t capacidade) {
   while (Serial.available() > 0) {
     char c = Serial.read();
     if (c == '\n' || c == '\r') {
-      if (bufIdx > 0) {
+      if (!serialOverflow && bufIdx > 0) {
         serialBuf[bufIdx] = '\0';
-        processarComando(serialBuf);
+        strncpy(destino, serialBuf, capacidade - 1);
+        destino[capacidade - 1] = '\0';
         bufIdx = 0;
+        return true;
       }
+      bufIdx = 0;
+      serialOverflow = false;
     }
     else {
+      if (serialOverflow) continue;
       if (bufIdx < sizeof(serialBuf) - 1) {
         serialBuf[bufIdx++] = c;
       } else {
         bufIdx = 0;
+        serialOverflow = true; // Descarta TODA a linha; nunca executa sua cauda.
       }
     }
   }
+  return false;
+}
+
+void loop() {
+  char linha[sizeof(serialBuf)];
+  while (lerLinhaSerial(linha, sizeof(linha))) processarComando(linha);
+  backendMonitorar();
   atualizarGarraSuave();
   monitorarSensor();
 }

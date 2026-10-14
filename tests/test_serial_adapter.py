@@ -55,7 +55,7 @@ class FakeSerialPort:
 
 
 class SerialArduinoTests(unittest.TestCase):
-    def build_arduino(self, on_write):
+    def build_arduino(self, on_write, **options):
         self.port = FakeSerialPort(on_write=on_write)
         self.arduino = SerialArduino(
             port="COM-TEST",
@@ -63,6 +63,7 @@ class SerialArduinoTests(unittest.TestCase):
             read_timeout=0.005,
             boot_wait=0,
             serial_factory=lambda **_kwargs: self.port,
+            **options,
         )
         self.arduino.connect()
         return self.arduino
@@ -171,6 +172,26 @@ class SerialArduinoTests(unittest.TestCase):
         self.port.inject("ERR:unit_1:GARRA:PEGAR:MOTOR_BLOCKED")
         with self.assertRaises(ArduinoCommandError):
             arduino.wait_for_event("GARRA_COLETA_CONCLUIDA", "unit_1", timeout=0.5)
+
+    def test_heartbeat_continues_during_action_wait_without_workflow(self):
+        pings = []
+
+        def respond(port, frame, attempt):
+            self.acknowledge(port, frame, attempt)
+            message = parse_message(frame)
+            if message.cycle_id == "SERIAL_HEARTBEAT":
+                pings.append(message)
+                if len(pings) == 2:
+                    port.inject("EVT:long_cycle:GARRA_COLETA_CONCLUIDA")
+
+        arduino = self.build_arduino(respond, heartbeat_interval=0.02)
+        arduino.execute("GARRA:PEGAR", "long_cycle", timeout=0.2)
+        result = arduino.wait_for_event("GARRA_COLETA_CONCLUIDA", "long_cycle", timeout=1)
+        self.assertEqual(result.payload, "GARRA_COLETA_CONCLUIDA")
+        self.assertGreaterEqual(len(pings), 2)
+        self.assertIsNotNone(arduino.telemetry.last_ping_at)
+        self.assertEqual(arduino.command_log, ["CMD:long_cycle:GARRA:PEGAR"])
+        self.assertFalse(any(message.cycle_id == "SERIAL_HEARTBEAT" for message in arduino._messages))
 
     def test_stop_command_is_sent_while_an_event_is_pending(self):
         arduino = self.build_arduino(self.acknowledge)

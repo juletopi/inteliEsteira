@@ -126,6 +126,10 @@ perfis; não há coordenadas, ângulos ou homing inventados pelo aplicativo. A o
 `GRIPPER_PROFILE_CALIBRATED=1` só deve ser usada depois de implementar e verificar
 esses perfis no firmware real. O perfil real fica bloqueado por padrão.
 
+O sketch `arduino/mearm_calibrador/`, do Freysta, agora atende esse protocolo
+reutilizando os pontos e limites da EEPROM. Após conferir o ciclo manual,
+`AUTO:VALIDAR` libera a calibração; veja o [guia integrado](teste-integrado.md).
+
 `REQUIRE_PHYSICAL_ARRIVAL=1` impede finalizar um transporte real com uma confirmação
 simulada ou somente rotações do EV3. Para testes explicitamente estimados, a opção
 pode ser desabilitada, mas a interface continuará mostrando ausência de comprovação

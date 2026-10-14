@@ -41,12 +41,14 @@ class SerialArduino(Arduino):
         write_timeout=1.0,
         boot_wait=2.0,
         serial_factory=None,
+        heartbeat_interval=1.0,
     ):
         self.port = str(port).strip()
         self.baudrate = int(baudrate)
         self.read_timeout = max(0.01, float(read_timeout))
         self.write_timeout = max(0.01, float(write_timeout))
         self.boot_wait = max(0.0, float(boot_wait))
+        self.heartbeat_interval = max(0.01, float(heartbeat_interval))
         self._serial_factory = serial_factory or _create_serial_connection
         self._serial = None
         self._reader = None
@@ -213,7 +215,7 @@ class SerialArduino(Arduino):
                     raise ArduinoCommandError(f"Arduino informou falha durante {expected}: {response.payload}.")
                 return response
 
-    def _send_frame(self, frame: str) -> None:
+    def _send_frame(self, frame: str, *, record=True) -> None:
         self._require_connected()
         encoded = f"{frame}\n".encode("utf-8")
         try:
@@ -221,7 +223,8 @@ class SerialArduino(Arduino):
                 self._serial.write(encoded)
                 if hasattr(self._serial, "flush"):
                     self._serial.flush()
-                self.command_log.append(frame)
+                if record:
+                    self.command_log.append(frame)
                 self.telemetry.record("TX", parse_message(frame))
         except Exception as exc:
             self._mark_connection_failed(exc)
@@ -254,8 +257,13 @@ class SerialArduino(Arduino):
         return None
 
     def _reader_loop(self) -> None:
+        next_ping = monotonic() + self.heartbeat_interval
         while not self._stop_reader.is_set():
             try:
+                if monotonic() >= next_ping:
+                    # Tambem protege ciclos avulsos da API, sem depender da fila.
+                    self._send_frame(encode_message("CMD", "SERIAL_HEARTBEAT", "SISTEMA:PING"), record=False)
+                    next_ping = monotonic() + self.heartbeat_interval
                 raw = self._serial.readline()
             except Exception as exc:
                 if not self._stop_reader.is_set():
@@ -280,6 +288,9 @@ class SerialArduino(Arduino):
 
             with self._condition:
                 self.telemetry.record("RX", message)
+                if (message.kind == "ACK" and message.cycle_id == "SERIAL_HEARTBEAT"
+                        and message.payload == "SISTEMA:PING"):
+                    continue
                 self._messages.append(message)
                 self._condition.notify_all()
 
