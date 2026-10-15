@@ -19,7 +19,7 @@ PRODUCTS = [("TESTE-AM", "AM"), ("TESTE-PR", "PR"), ("TESTE-SP", "SP"),
 
 
 @contextmanager
-def virtual_bench(database, *, camera="mock", arduino_options=None):
+def virtual_bench(database, *, camera="mock", arduino_options=None, catalog=None):
     token = secrets.token_hex(16)
     arduino = ProtocolSimulator(("127.0.0.1", 0), delay=0.03, **(arduino_options or {}))
     ev3 = EV3Simulator(token=token, delay=0.03)
@@ -33,7 +33,9 @@ def virtual_bench(database, *, camera="mock", arduino_options=None):
             threads.append(thread)
         app = create_app({
             "AUTO_OPERATION": False, "EV3_IS_SIMULATED": True,
-            "DATABASE_PATH": Path(database), "BOOTSTRAP_CATALOG": False,
+            "DATABASE_PATH": Path(database), "BOOTSTRAP_CATALOG": catalog is not None,
+            "CATALOG_PATH": Path(catalog) if catalog is not None else Path(database).with_suffix(".json"),
+            "BOOTSTRAP_CATALOG_PATH": ROOT / "data/catalogo-inicial.json",
             "HARDWARE_MODE": "simulator", "ARDUINO_SIMULATOR_PORT": arduino.server_address[1],
             "CONVEYOR_MODE": "ev3", "EV3_HOST": "127.0.0.1",
             "EV3_PORT": ev3.server_address[1], "EV3_TOKEN": token,
@@ -43,7 +45,7 @@ def virtual_bench(database, *, camera="mock", arduino_options=None):
         })
         client = app.test_client()
         products = app.extensions["product_repository"]
-        for product, uf in PRODUCTS:
+        for product, uf in PRODUCTS if catalog is None else []:
             if products.get(product, include_inactive=True) is None:
                 response = client.post("/api/products", json={"produto_id": product, "uf": uf})
                 if response.status_code != 201:
@@ -113,7 +115,10 @@ def main():
     parser.add_argument("--camera", choices=("mock", "opencv"), default="mock")
     parser.add_argument("--port", type=int, default=5001)
     parser.add_argument("--smoke-test", action="store_true")
-    parser.add_argument("--database", type=Path, help="Banco persistente exclusivo da bancada (opcional).")
+    parser.add_argument("--database", type=Path, help="Banco persistente da bancada; padrao: output/bancada-catalogo.db.")
+    parser.add_argument("--catalog", type=Path, default=ROOT / "data/inteliesteira.json",
+                        help="Arquivo JSON dos cadastros, salvo automaticamente.")
+    parser.add_argument("--demo", action="store_true", help="Usar somente produtos TESTE em banco separado.")
     args = parser.parse_args()
     if args.smoke_test and args.camera != "mock":
         parser.error("--smoke-test usa camera mock; teste ArUco com --camera opencv no painel.")
@@ -124,15 +129,20 @@ def main():
     output = ROOT / "output"
     output.mkdir(exist_ok=True)
     with TemporaryDirectory(prefix="bancada-", dir=output) as folder:
-        database = args.database.resolve() if args.database else Path(folder) / "bancada.db"
-        with virtual_bench(database, camera=args.camera) as (app, arduino, ev3):
+        if args.smoke_test:
+            database, catalog = Path(folder) / "bancada.db", None
+        else:
+            default_name = "bancada-demo.db" if args.demo else "bancada-catalogo.db"
+            database = args.database.resolve() if args.database else output / default_name
+            catalog = None if args.demo else args.catalog.resolve()
+        with virtual_bench(database, camera=args.camera, catalog=catalog) as (app, arduino, ev3):
             if args.smoke_test:
                 smoke_test(app, arduino, ev3)
             else:
                 request_ok(app.test_client(), "/api/flow/start")
                 print(f"BANCADA VIRTUAL: http://127.0.0.1:{args.port} — sem motores reais.", flush=True)
-                print(f"Banco {'persistente' if args.database else 'temporario'}: {database}", flush=True)
-                print("Produtos TESTE-AM/PR/SP/CE/GO. Camera mock: use Simular leitura no painel.", flush=True)
+                print(f"Banco persistente: {database}", flush=True)
+                print("Cadastros salvos automaticamente no JSON do projeto.", flush=True)
                 app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False)
 
 

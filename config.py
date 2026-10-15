@@ -30,6 +30,8 @@ ARRIVAL_TIMEOUT = float(os.getenv("ARRIVAL_TIMEOUT", "35.0"))
 DATABASE_PATH = PROJECT_ROOT / "data" / "inteliesteira.db"
 BOOTSTRAP_CATALOG = os.getenv("BOOTSTRAP_CATALOG", "1").strip().lower() in {"1", "true", "sim"}
 BOOTSTRAP_CATALOG_PATH = PROJECT_ROOT / "data" / "catalogo-inicial.json"
+# Sem override: JSON ao lado do banco, com o mesmo nome (data/inteliesteira.json).
+CATALOG_PATH = os.getenv("CATALOG_PATH", "").strip() or None
 CAMERA_PICKUP_ROI = tuple(float(value) for value in os.getenv("CAMERA_PICKUP_ROI", "0,0,1,1").split(","))
 GRIPPER_PROFILE_CALIBRATED = os.getenv("GRIPPER_PROFILE_CALIBRATED", "0").strip().lower() in {"1", "true", "sim"}
 GRIPPER_COMPLETION_TIMEOUT = float(os.getenv("GRIPPER_COMPLETION_TIMEOUT", "30"))

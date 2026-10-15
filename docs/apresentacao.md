@@ -1,75 +1,70 @@
 # Cadastro e etiquetas na apresentação
 
-O banco `data/inteliesteira.db` conserva produtos, UFs e vínculos ArUco entre
-reinícios. Cada etiqueta usa um ID numérico de `DICT_4X4_250`; o cadastro associa
-esse ID ao produto. `PROD-0087` deve estar cadastrado com UF `CE`.
+Os cadastros ficam em `data/inteliesteira.json`. Cadastrar ou editar produtos,
+ativar/desativar, excluir e vincular IDs ArUco atualiza esse arquivo automaticamente.
+Na próxima abertura, os mesmos dados são carregados sem importar ou exportar nada.
+A bancada padrão e a aplicação principal usam esse arquivo.
 
-## Preparar as etiquetas e o catálogo
+## Preparar as etiquetas
 
-1. Na tela **Produtos**, confirme identificador, UF e atividade de cada produto.
+1. Na tela **Produtos**, confira identificador, UF e atividade de cada produto.
 2. Para uma etiqueta já impressa, informe seu **ID antigo** antes de clicar em
-   **Baixar ArUco**. Se for uma etiqueta nova, deixe o campo vazio e use o PNG
-   ou PDF baixado nessa operação. A coluna **ArUco** mostra o número que ficou salvo.
-   Escolha 50, 40, 30 ou 20 mm; para comparar os quatro, selecione a opção de todos
-   na mesma folha. Use o PDF em 100% / tamanho real, sem ajustar à página.
-   Para reunir os produtos, marque as linhas ou **Marcar todos** e use
-   **Baixar selecionados (PDF)**. Cada etiqueta do lote mostra produto, região,
-   UF e ID. Se não couber em uma folha, o PDF continua em novas páginas.
-3. Imprima as etiquetas finais e teste uma leitura de cada uma pela webcam.
-   Confira o produto reconhecido, a UF e a região; `CE` corresponde ao Nordeste.
-4. Pare o servidor e salve o catálogo e uma cópia completa do banco:
+   **Baixar ArUco**. Para uma etiqueta nova, deixe o campo vazio e use o PNG ou
+   PDF baixado nessa operação. A coluna **ArUco** mostra o número salvo.
+3. Escolha 50, 40, 30 ou 20 mm, ou todos os tamanhos na mesma folha. Imprima o
+   PDF em 100% / tamanho real. Para reunir produtos, marque as linhas e use
+   **Baixar selecionados (PDF)**. O arquivo continua em novas páginas se necessário.
+4. Teste uma leitura de cada etiqueta pela webcam. Confira produto, UF e região.
+   O vínculo com o ID é salvo automaticamente no JSON; não é preciso gerar
+   outro arquivo de catálogo depois de imprimir.
+
+Excluir um produto grava `"excluido": true` e conserva seu ID reservado. Ele sai
+da lista e da impressão; o histórico permanece. Uma versão antiga do arquivo
+não reativa produtos excluídos localmente nem troca o ID de etiquetas existentes.
+
+## Abrir no mesmo computador ou em outro
+
+No mesmo computador e pasta, basta iniciar normalmente:
 
 ```powershell
-cd F:\inteliEsteira
-.\.venv\Scripts\python.exe -m storage.catalog export .\data\catalogo-apresentacao.json
-.\.venv\Scripts\python.exe -m storage.catalog verify .\data\catalogo-apresentacao.json --require-aruco
-.\.venv\Scripts\python.exe -m storage.catalog backup .\data\inteliesteira-apresentacao.db
-```
-
-O catálogo JSON contém os identificadores, UFs, atividade e IDs exatos. O backup
-SQLite inclui também o histórico. Leve ambos junto com os PNGs usados na impressão.
-O JSON pode ser versionado no Git; o banco continua local. Esses comandos recusam
-sobrescrever arquivos existentes: use um novo nome se precisar salvar outra revisão.
-Não edite os IDs no catálogo depois de imprimir as etiquetas.
-
-## No computador da apresentação
-
-Se for o mesmo computador/pasta, confira o catálogo salvo antes de iniciar:
-
-```powershell
-.\.venv\Scripts\python.exe -m storage.catalog verify .\data\catalogo-apresentacao.json --require-aruco
 .\.venv\Scripts\python.exe start.py
 ```
 
-Se for outra cópia do projeto, copie o JSON para `data/`, instale as dependências
-e importe o catálogo com o servidor parado:
+Em outra máquina, a cópia do projeto precisa incluir **`data/inteliesteira.json`
+atualizado**. Copie a pasta com esse arquivo ou inclua o JSON no commit/push e
+atualize a outra máquina antes de iniciar. O salvamento é local; não há
+sincronização automática pela internet. Depois de instalar as dependências,
+abra normalmente: os cadastros e IDs serão carregados automaticamente.
+
+Para testar sem equipamentos, mantendo esses mesmos cadastros:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m storage.catalog import .\data\catalogo-apresentacao.json
-.\.venv\Scripts\python.exe -m storage.catalog verify .\data\catalogo-apresentacao.json --require-aruco
-.\.venv\Scripts\python.exe start.py
+.\.venv\Scripts\python.exe -m scripts.bancada
 ```
 
-A importação usa os IDs do arquivo, sem sortear ou recalcular números. Um conflito
-de ID, UF ou atividade cancela toda a importação e preserva os cadastros locais.
-A verificação confere os produtos do catálogo; outros produtos locais podem existir.
-Se ela falhar, resolva a divergência antes de usar as etiquetas impressas.
+O painel fica em http://127.0.0.1:5001. Fila e histórico de testes ficam no banco
+separado `output/bancada-catalogo.db`. A opção `--demo` usa apenas cadastros TESTE
+separados do catálogo principal.
 
-Se excluir produtos na tela, exporte uma nova versão do catálogo. Os registros
-marcados como excluídos são levados junto para preservar a reserva dos IDs e aplicar
-a exclusão na outra máquina. Eles ficam fora da lista de produtos e da impressão;
-o histórico é mantido. Um catálogo antigo não reativa um produto excluído.
+## Histórico e recuperação
 
-O comando `start.py` mantém a configuração de câmera e hardware do ambiente.
-Para ler as etiquetas pela webcam, use `CAMERA_MODE=opencv`, como no README.
-Teste novamente as etiquetas impressas e a montagem no local: conferir o catálogo
-valida o vínculo dos dados, mas não testa foco da câmera, motores ou calibração.
+O SQLite `data/inteliesteira.db` é criado automaticamente pela aplicação e mantém
+fila, histórico e referências dos produtos. Não exige criar um banco manualmente
+nem instalar um servidor. O JSON conserva os cadastros, não o histórico completo.
+Se precisar transportar também o histórico, faça uma cópia consistente do banco:
 
-## Recuperar uma etiqueta antiga
+```powershell
+.\.venv\Scripts\python.exe -m storage.catalog backup .\output\historico-apresentacao.db
+```
 
-Se perdeu o banco, o nome `aruco-PROD-0087-id17.png`, por exemplo, informa o ID 17.
-Esse número é apenas um exemplo. Cadastre `PROD-0087`/`CE` e informe o ID real.
-Se o nome do arquivo não tiver o número, leia o PNG ou a etiqueta com o detector
-ArUco para identificá-lo. Sem o ID ou a etiqueta original, imprima uma nova
-etiqueta gerada pelo cadastro atual e salve esse catálogo como referência.
+Use outro nome se esse backup já existir. A gravação automática do JSON usa
+substituição atômica; uma falha conserva a alteração no SQLite para recuperação
+na próxima abertura. Arquivo inválido ou conflito de etiquetas é informado sem
+sobrescrever os dados. Preserve os dois arquivos ao investigar uma divergência.
+
+Se perdeu ambos e tem uma etiqueta antiga, o nome `aruco-PROD-0087-id17.png`,
+por exemplo, informa o ID 17. Esse número é apenas um exemplo: cadastre o produto
+e informe o ID real da etiqueta. Sem o ID ou a etiqueta original, gere uma nova.
+
+`start.py` mantém a configuração de câmera e hardware do ambiente. Teste foco,
+montagem e calibração no local conforme o [roteiro integrado](teste-integrado.md).

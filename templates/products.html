@@ -467,7 +467,7 @@
             await saveDownload(response, `aruco-lote-${size === "all" ? "4-tamanhos" : `${size}mm`}.pdf`);
             await loadProducts();
             setProductFeedback(
-                `PDF de ${products.length} produto${products.length === 1 ? "" : "s"} baixado. Se foram atribuídos novos IDs, exporte o catálogo atualizado.`,
+                `PDF de ${products.length} produto${products.length === 1 ? "" : "s"} baixado. Os IDs foram salvos automaticamente.`,
                 "success"
             );
         } catch (error) {
@@ -506,7 +506,7 @@
             await apiRequest(url, { method: "DELETE" });
             selectedProducts.delete(product.id);
             await loadProducts();
-            setProductFeedback(`${product.id} excluído. Exporte o catálogo atualizado antes de versionar.`, "success");
+            setProductFeedback(`${product.id} excluído. Cadastro salvo automaticamente.`, "success");
         } catch (error) {
             setProductFeedback(error.message, "error");
         } finally {

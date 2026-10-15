@@ -21,7 +21,7 @@ EV3 fisico ou `data/inteliesteira.db`. Finaliza e encerra os simuladores.
 Para acompanhar a operacao automatica pelo painel:
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.bancada --database output/bancada.db
+.\.venv\Scripts\python.exe -m scripts.bancada
 ```
 
 Abra http://127.0.0.1:5001. A fila e criada pela identificacao, sem cadastro manual
@@ -29,22 +29,24 @@ ou botoes no bloco da camera. Injete etiqueta e presenca pelas APIs de simulacao
 do [guia de operacao automatica](operacao-fila.md). O transporte e a chegada
 exibidos aqui sao simulados. Falhas exigem inspecao e recuperacao pelas APIs de manutencao.
 
-O argumento `--database` preserva catalogo, IDs ArUco, fila e historico entre
-aberturas. Sem ele, a bancada comeca vazia a cada execucao. O teste automatico
-sempre usa banco temporario. A bancada recusa o caminho do banco principal.
-Nao abra duas instancias usando o mesmo arquivo.
+A bancada salva automaticamente os cadastros em `data/inteliesteira.json`, o mesmo
+arquivo da aplicacao principal. Fila e historico simulados ficam separados em
+`output/bancada-catalogo.db`, preservados entre aberturas. `--database` permite
+outro banco operacional. Para usar apenas produtos TESTE, execute com `--demo`;
+esses cadastros ficam separados. O teste automatico sempre usa dados temporarios.
+A bancada recusa o banco principal. Nao abra duas instancias com o mesmo banco.
 
 ## 2. Testar ArUco com a webcam
 
 ```powershell
-.\.venv\Scripts\python.exe -m scripts.bancada --camera opencv --database output/bancada.db
+.\.venv\Scripts\python.exe -m scripts.bancada --camera opencv
 ```
 
 Na tela Produtos, baixe e imprima as etiquetas dos produtos desse banco. Injete
 presenca na API de simulacao e apresente uma etiqueta em E01, apos a coleta virtual.
 A leitura vem da camera, enquanto garra, motores e chegada continuam virtuais. Retire a etiqueta anterior do
-enquadramento entre unidades. Etiquetas do banco principal nao necessariamente
-tem os mesmos IDs no banco da bancada; gere as etiquetas na propria bancada.
+enquadramento entre unidades. A bancada padrao usa os mesmos produtos e IDs ArUco
+do JSON da aplicacao principal; etiquetas ja impressas mantem os vinculos.
 
 `CAMERA_INDEX` seleciona a webcam. `CAMERA_PICKUP_ROI=x,y,largura,altura` delimita
 o retangulo em fracoes de 0 a 1. O padrao `0,0,1,1` usa o frame inteiro: ajuste
@@ -173,10 +175,16 @@ essas condicoes fisicas.
 
 ## Persistencia da aplicacao principal
 
-`data/inteliesteira.db` mantem produtos, vinculos ArUco, fila e historico entre
-reinicios. `data/catalogo-inicial.json` importa apenas em banco vazio; nao apaga
-nem sobrescreve o banco existente ao abrir. Exportar/importar JSON transporta o
-catalogo, nao todo o historico operacional. Para migrar tudo, use backup SQLite.
+`data/inteliesteira.json` recebe automaticamente todos os cadastros, alteracoes,
+exclusoes e vinculos ArUco. A aplicacao carrega o arquivo ao abrir, sem operacao
+manual. A bancada padrao usa o mesmo JSON. Para outra maquina, leve o projeto com
+esse arquivo atualizado (copia ou commit/push e atualizacao na outra maquina).
+
+`data/inteliesteira.db` e criado automaticamente e mantem fila, historico e uma
+copia dos produtos para as referencias operacionais. Nao exige instalar banco.
+O JSON transporta os cadastros; para migrar tambem o historico, use backup SQLite.
+`data/catalogo-inicial.json` e apenas a carga inicial quando nao existem JSON nem
+cadastros locais.
 
 ## Verificar o firmware sem gravar a placa
 

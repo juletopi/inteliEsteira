@@ -20,6 +20,12 @@ def create_app(test_config=None):
             if name not in (test_config or {}):
                 app.config[name] = value
 
+    from storage.automatic_catalog import CatalogPersistenceError
+
+    @app.errorhandler(CatalogPersistenceError)
+    def catalog_storage_error(error):
+        return {"ok": False, "erro": {"codigo": "CATALOG_STORAGE_ERROR", "mensagem": str(error)}}, 503
+
     _configure_controller(app)
 
     from app.routes.api import api_bp
@@ -50,6 +56,7 @@ def _configure_controller(app):
     from core.workflow import Workflow
     from storage.queue import QueueRepository
     from storage.catalog import import_catalog
+    from storage.automatic_catalog import AutomaticCatalog
     from storage.database import Database
     from storage.repositories import CycleRepository, ProductRepository
     from vision.mock import MockQRCodeCamera
@@ -57,12 +64,19 @@ def _configure_controller(app):
 
     database = Database(app.config["DATABASE_PATH"])
     database.initialize()
-    if app.config.get("BOOTSTRAP_CATALOG"):
+    catalog_path = app.config.get("CATALOG_PATH")
+    if catalog_path is None and not app.config.get("TESTING"):
+        catalog_path = database.path.with_suffix(".json")
+    if app.config.get("BOOTSTRAP_CATALOG") and (catalog_path is None or not Path(catalog_path).exists()):
         with database.connect() as connection:
             empty = connection.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0
         if empty:
             with Path(app.config["BOOTSTRAP_CATALOG_PATH"]).open(encoding="utf-8-sig") as source:
                 import_catalog(database, json.load(source))
+    if catalog_path is not None:
+        store = AutomaticCatalog(database, catalog_path)
+        store.initialize()
+        app.extensions["catalog_store"] = store
     products = ProductRepository(database)
     cycles = CycleRepository(database)
     hardware_mode = str(app.config.get("HARDWARE_MODE", "mock")).strip().lower()

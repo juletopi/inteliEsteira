@@ -53,8 +53,8 @@ Controller
 - Operação automática pelo HC-SR04: coleta em P01, leitura ArUco na esteira E01,
   fila criada pela identificação e liberação da próxima caixa após o término da esteira. Veja o
   [roteiro de operação e validação sem Arduino](docs/operacao-fila.md).
-- Banco SQLite local para fila, cadastros e histórico; `data/catalogo-inicial.json`
-  inicializa somente bancos vazios, preservando os IDs em uma instalação nova.
+- Cadastros salvos automaticamente em `data/inteliesteira.json`, incluindo UFs,
+  atividade, exclusões e IDs ArUco. SQLite local mantém fila e histórico.
 - Interface web de monitoramento e controle da linha de produção:
    - **Dashboard** responsivo conectado ao backend simulado.
    - Controles para planejar a sequência, verificar comunicação, iniciar fluxo,
@@ -551,10 +551,23 @@ calibrações, ACK perdido, cancelamento, watchdog, falhas e reconexão:
 
 ### Persistência
 
-Para manter os mesmos produtos e IDs ArUco em outro computador ou no dia da
-apresentação, siga o [roteiro de catálogo, backup e conferência](docs/apresentacao.md).
-O comando `python -m storage.catalog` exporta, importa e verifica os vínculos,
-além de criar um backup SQLite consistente sem sobrescrever arquivos anteriores.
+Cada cadastro, alteração, exclusão e vínculo ArUco grava automaticamente
+`data/inteliesteira.json`. Ao abrir a aplicação, esse arquivo é carregado
+automaticamente, inclusive quando já existe um banco local. Não é necessário
+importar, exportar ou instalar um servidor de banco de dados. O catálogo local
+anterior é preservado na primeira inicialização da atualização.
+
+Para usar os mesmos cadastros em outra máquina, leve o projeto com a versão atual
+de `data/inteliesteira.json`, por cópia ou incluindo esse arquivo no commit/push
+e atualizando a outra máquina. Gravar em disco não sincroniza computadores pela
+internet. A bancada padrão também usa esse JSON; `--demo` usa cadastros separados.
+Veja o [roteiro de cadastro e etiquetas](docs/apresentacao.md).
+
+A gravação usa substituição atômica do arquivo. Se falhar, o SQLite local conserva
+a alteração para retomá-la na próxima abertura, e a API informa a falha.
+JSON inválido ou conflito de etiquetas interrompe a sincronização e preserva os
+dados. `data/catalogo-inicial.json` é apenas a carga inicial de instalações sem
+JSON e sem cadastros existentes. `CATALOG_PATH` permite configurar outro arquivo.
 
 Na tela **Produtos**, **Desativar/Ativar** altera a disponibilidade mantendo o
 item visível. **Excluir** pede confirmação e remove o produto do catálogo e da
@@ -564,10 +577,10 @@ outro produto, e um identificador excluído não pode ser cadastrado novamente.
 
 `DELETE /api/products/<produto_id>` exclui o produto; para apenas desativar, use
 `PUT /api/products/<produto_id>` com `{"ativo": false}`. Ao iniciar, o aplicativo
-atualiza o banco existente sem apagar produtos ou histórico. Após excluir, exporte
-um novo catálogo: registros com `"excluido": true` transportam a exclusão e a reserva
-do marcador para a outra máquina. Eles ficam fora da lista da interface. Importar
-um catálogo anterior não reativa produtos já excluídos.
+atualiza o banco existente sem apagar produtos ou histórico. As exclusões são
+salvas automaticamente com `"excluido": true`, preservando a reserva do marcador.
+Esses registros ficam fora da lista da interface. Um JSON anterior não reativa
+produtos já excluídos.
 
 O banco `data/inteliesteira.db` é criado automaticamente no primeiro início e
 armazena:
