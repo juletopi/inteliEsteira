@@ -61,12 +61,12 @@ class ControllerTests(unittest.TestCase):
             self.command_payloads(),
             [
                 "SISTEMA:PING",
-                "DESTINO:R08",
                 "GARRA:AREA:P01",
                 "GARRA:PEGAR",
                 "GARRA:POSICIONAR:E01",
                 "GARRA:SOLTAR",
                 "GARRA:HOME",
+                "DESTINO:R08",
                 "ESTEIRA:START",
                 "ESTEIRA:STOP",
             ],
@@ -80,7 +80,8 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(stored_cycle["produto_id"], "PROD-1")
         self.assertGreaterEqual(len(stored_cycle["eventos"]), 8)
         events = [event["tipo"] for event in stored_cycle["eventos"]]
-        self.assertLess(events.index("QR_LIDO"), events.index("OBJETO_COLETADO"))
+        self.assertLess(events.index("OBJETO_ENTREGUE_NA_ESTEIRA"), events.index("QR_LIDO"))
+        self.assertLess(events.index("QR_LIDO"), events.index("DESTINO_DEFINIDO"))
         self.assertLess(events.index("OBJETO_ENTREGUE_NA_ESTEIRA"), events.index("ESTEIRA_INICIADA"))
 
     def test_retries_command_after_timeout(self):
@@ -91,6 +92,12 @@ class ControllerTests(unittest.TestCase):
 
         self.assertEqual(result.destination, "R03")
         self.assertEqual(self.command_payloads().count("GARRA:PEGAR"), 2)
+
+    def test_cancelled_handoff_does_not_clear_stop_and_move_gripper(self):
+        self.enqueue_product()
+        with self.assertRaises(CycleStoppedError):
+            self.controller.process_next_product(cancelled=lambda: True)
+        self.assertEqual(self.command_payloads(), [])
 
     def test_enters_safe_error_state_when_command_fails(self):
         self.enqueue_product(state="SP")

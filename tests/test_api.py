@@ -55,30 +55,26 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(status["camera_resolucao"])
         self.assertEqual(status["hardware_modo"], "mock")
 
-    def test_dashboard_exposes_operational_controls(self):
+    def test_dashboard_exposes_automatic_queue_and_preview(self):
         response = self.client.get("/")
         html = response.get_data(as_text=True)
 
         for element_id in (
-            "queue-product",
             "queue-table-body",
-            "add-queue-button",
-            "check-button",
-            "start-button",
-            "stop-button",
-            "reset-button",
-            "operation-feedback",
+            "queue-count",
+            "queue-notice",
+            "presence-status",
+            "camera-image",
         ):
             with self.subTest(element_id=element_id):
                 self.assertIn(f'id="{element_id}"', html)
 
         self.assertNotIn('id="product-state"', html)
         self.assertNotIn('id="product-id"', html)
-        self.assertIn("/api/queue", html)
-        self.assertIn("/api/flow/start", html)
-        self.assertIn("/api/diagnostics", html)
-        self.assertIn("/api/system/stop", html)
-        self.assertIn("/api/system/reset", html)
+        for element in ("queue-product", "queue-quantity", "add-queue-button", "check-button",
+                        "start-button", "stop-button", "reset-button", "operation-feedback", "communication-table-body"):
+            self.assertNotIn(f'id="{element}"', html, element)
+        self.assertIn("/api/status", html)
 
     def test_product_and_history_pages_expose_dynamic_tables(self):
         products_html = self.client.get("/produtos").get_data(as_text=True)

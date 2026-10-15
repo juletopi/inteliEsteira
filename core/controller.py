@@ -85,18 +85,22 @@ class SystemController:
         self.require_physical_arrival = require_physical_arrival
         self._cycle_lock = Lock()
         self._stop_requested = Event()
+        self._external_cancelled = None
 
         self.state.update(**self._connection_status())
 
     def process_next_product(self, *, qr_code=None, occupancy=None, unavailable=None,
-                             identified_qr_code=None, expected_product_id=None, cycle_id=None):
+                             identified_qr_code=None, expected_product_id=None, cycle_id=None,
+                             on_identified=None, presence_confirmed=False, cancelled=None):
         if not self._cycle_lock.acquire(blocking=False):
             raise SystemBusyError("Ja existe um ciclo em processamento.")
 
         cycle_id = cycle_id or uuid4().hex[:12]
         cycle_recorded = False
         try:
+            self._external_cancelled = cancelled
             self._stop_requested.clear()
+            self._ensure_not_stopped()
             current_state = self.state.snapshot()["estado"]
             if current_state == "ERRO":
                 raise SystemNotReadyError(
@@ -143,9 +147,29 @@ class SystemController:
                 chegada_fisica=False,
             )
 
+            if presence_confirmed:
+                self.cycles.add_event(cycle_id, "PRESENCA_CONFIRMADA", {"sensor": "HC-SR04"})
+            self.gripper.set_pickup_area(cycle_id, timeout=self.command_timeout, retries=self.command_retries)
+            self.cycles.add_event(cycle_id, "AREA_COLETA_CONFIGURADA", {"area": self.gripper.pickup_zone})
+            self.state.transition("PEGANDO_OBJETO")
+            for action, event, phase in ((self.gripper.pick_object, "OBJETO_COLETADO", None),
+                                         (self.gripper.place_on_conveyor, "GARRA_POSICIONADA_SOBRE_ESTEIRA", "POSICIONANDO_OBJETO"),
+                                         (self.gripper.release_object, "OBJETO_ENTREGUE_NA_ESTEIRA", "SOLTANDO_OBJETO"),
+                                         (self.gripper.home, "GARRA_RETORNOU", None)):
+                self._ensure_not_stopped()
+                if phase:
+                    self.state.transition(phase)
+                response = action(cycle_id, timeout=self.command_timeout, retries=self.command_retries,
+                                  event_timeout=self.gripper_timeout, cancelled=self._cancelled)
+                self.cycles.add_event(cycle_id, event, {"confirmacao": response.payload, "area": self.gripper.pickup_zone})
+                if event == "OBJETO_COLETADO":
+                    self.state.update(garra="segurando")
+            self._ensure_not_stopped()
+            self.state.transition("OBJETO_POSICIONADO", garra="livre")
+            self.cycles.add_event(cycle_id, "OBJETO_POSICIONADO")
             self.state.transition("LENDO_QR")
             captured_qr_code = identified_qr_code if identified_qr_code is not None else self.camera.scan_qrcode(
-                cancelled=self._stop_requested.is_set)
+                cancelled=self._cancelled)
             self.cycles.set_qr_code(cycle_id, captured_qr_code)
             self.cycles.add_event(cycle_id, "QR_LIDO")
             self._ensure_not_stopped()
@@ -182,6 +206,9 @@ class SystemController:
                     "destino": decision.destination,
                 },
             )
+            if on_identified is not None:
+                on_identified(cycle_id, decision)
+            self._ensure_not_stopped()
 
             self.conveyor.set_destination(
                 decision.destination,
@@ -190,24 +217,6 @@ class SystemController:
                 retries=self.command_retries,
             )
             self._ensure_not_stopped()
-            self.gripper.set_pickup_area(cycle_id, timeout=self.command_timeout, retries=self.command_retries)
-            self.cycles.add_event(cycle_id, "AREA_COLETA_CONFIGURADA", {"area": self.gripper.pickup_zone})
-            self.state.transition("PEGANDO_OBJETO")
-            for action, event, phase in ((self.gripper.pick_object, "OBJETO_COLETADO", None),
-                                         (self.gripper.place_on_conveyor, "GARRA_POSICIONADA_SOBRE_ESTEIRA", "POSICIONANDO_OBJETO"),
-                                         (self.gripper.release_object, "OBJETO_ENTREGUE_NA_ESTEIRA", "SOLTANDO_OBJETO"),
-                                         (self.gripper.home, "GARRA_RETORNOU", None)):
-                self._ensure_not_stopped()
-                if phase:
-                    self.state.transition(phase)
-                response = action(cycle_id, timeout=self.command_timeout, retries=self.command_retries,
-                                  event_timeout=self.gripper_timeout, cancelled=self._stop_requested.is_set)
-                self.cycles.add_event(cycle_id, event, {"confirmacao": response.payload, "area": self.gripper.pickup_zone})
-                if event == "OBJETO_COLETADO":
-                    self.state.update(garra="segurando")
-            self._ensure_not_stopped()
-            self.state.transition("OBJETO_POSICIONADO", garra="livre")
-            self.cycles.add_event(cycle_id, "OBJETO_POSICIONADO")
             self.conveyor.start(
                 cycle_id,
                 timeout=self.command_timeout,
@@ -221,11 +230,12 @@ class SystemController:
             self.conveyor.wait_until_destination(
                 cycle_id,
                 timeout=self.arrival_timeout,
-                cancelled=self._stop_requested.is_set,
+                cancelled=self._cancelled,
             )
             self._ensure_not_stopped()
-            arrival_device = self.conveyor.arrival_sensor or self.conveyor.device
             real_hardware = any(getattr(device, "mode", "mock") in {"serial", "ev3"} for _name, device in self._hardware_devices())
+            if real_hardware and self.conveyor.arrival_source.startswith("simulad"):
+                raise HardwareError("Hardware real nao pode concluir com evento de esteira simulada.")
             if (self.require_physical_arrival and real_hardware
                     and not self.conveyor.physical_arrival):
                 raise HardwareError("Chegada fisica nao confirmada: instale o sensor no destino; rotacoes calibradas nao comprovam chegada.")
@@ -244,6 +254,7 @@ class SystemController:
                 timeout=self.command_timeout,
                 retries=self.command_retries,
             )
+            self.cycles.add_event(cycle_id, "ESTEIRA_CONCLUIDA", {"destino": decision.destination})
             self.state.transition("FINALIZADO", esteira="parada")
             self.cycles.complete(cycle_id)
 
@@ -256,7 +267,7 @@ class SystemController:
             )
         except (ClassificationError, HardwareError, CameraError) as exc:
             self._safe_stop(cycle_id)
-            if self._stop_requested.is_set():
+            if self._cancelled():
                 self.state.stop()
                 if cycle_recorded:
                     self.cycles.stop(cycle_id)
@@ -273,7 +284,7 @@ class SystemController:
             raise
         except Exception as exc:
             self._safe_stop(cycle_id)
-            if self._stop_requested.is_set():
+            if self._cancelled():
                 self.state.stop()
                 if cycle_recorded:
                     self.cycles.stop(cycle_id)
@@ -283,6 +294,7 @@ class SystemController:
                 self.cycles.fail(cycle_id, "UNEXPECTED_ERROR", str(exc))
             raise CycleProcessingError("UNEXPECTED_ERROR", str(exc)) from exc
         finally:
+            self._external_cancelled = None
             self.state.update(**self._connection_status())
             self._cycle_lock.release()
 
@@ -351,8 +363,11 @@ class SystemController:
         return self.state.snapshot()
 
     def _ensure_not_stopped(self):
-        if self._stop_requested.is_set():
+        if self._cancelled():
             raise CycleStoppedError("O ciclo foi interrompido pelo operador.")
+
+    def _cancelled(self):
+        return self._stop_requested.is_set() or bool(self._external_cancelled and self._external_cancelled())
 
     def _safe_stop(self, cycle_id):
         try:

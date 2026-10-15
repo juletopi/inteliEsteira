@@ -86,6 +86,15 @@ class SerialArduinoTests(unittest.TestCase):
         self.assertEqual(response.payload, "GARRA:PEGAR")
         self.assertEqual(self.port.writes, ["CMD:cycle_1:GARRA:PEGAR"])
 
+    def test_hcsr04_presence_is_read_without_being_discarded_as_invalid_protocol(self):
+        arduino = self.build_arduino(self.acknowledge)
+        sequence = arduino.presence.snapshot()["sequencia"]
+        self.port.inject("SENSOR:PRESENTE:7")
+        reading = arduino.presence.wait_present(sequence, timeout=0.5)
+        self.assertIsNotNone(reading)
+        self.assertEqual(reading["distancia_cm"], 7)
+        self.assertNotIn("SENSOR:PRESENTE:7", arduino.invalid_frames)
+
     def test_retries_after_command_timeout(self):
         def answer_second_attempt(port, frame, attempt):
             if attempt == 2:

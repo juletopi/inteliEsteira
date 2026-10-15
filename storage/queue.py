@@ -68,6 +68,28 @@ class QueueRepository:
         items = self.items()
         return items[0] if items else None
 
+    def detected(self, owner, product_id, cycle_id):
+        with self.database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            runtime = connection.execute("SELECT * FROM operation_runtime WHERE id = 1").fetchone()
+            if runtime["owner"] != owner or not self._active(runtime) or runtime["stop_requested"]:
+                raise QueueError("A operacao perdeu a posse da fila ou recebeu parada.")
+            stamp = now_iso()
+            cursor = connection.execute(
+                "INSERT INTO operation_queue (product_id, status, cycle_id, origin, created_at, updated_at) "
+                "VALUES (?, 'PROCESSANDO', ?, 'automatico', ?, ?)", (product_id, cycle_id, stamp, stamp),
+            )
+            return cursor.lastrowid
+
+    def automatic_items(self):
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT q.*, c.macroregion, c.destination, c.status AS phase FROM operation_queue q "
+                "LEFT JOIN cycles c ON c.cycle_id = q.cycle_id WHERE q.origin = 'automatico' ORDER BY q.id DESC LIMIT 100"
+            ).fetchall()
+        return [{**self._serialize(row), "macroregiao": row["macroregion"], "destino": row["destination"],
+                 "etapa": row["phase"], "criado_em": row["created_at"]} for row in reversed(rows)]
+
     def recent(self):
         with self.database.connect() as connection:
             rows = connection.execute("SELECT * FROM operation_queue WHERE status = 'FINALIZADO' ORDER BY id DESC LIMIT 10").fetchall()
@@ -95,6 +117,13 @@ class QueueRepository:
             rows = connection.execute("SELECT * FROM operation_queue WHERE status = 'PROCESSANDO'").fetchall()
             interrupted = False
             reconciled = False
+            previous_cycle = json.loads(runtime["info"]).get("ciclo_id")
+            if previous_cycle:
+                cursor = connection.execute(
+                    "UPDATE cycles SET status = 'PARADO', finished_at = ? WHERE cycle_id = ? AND finished_at IS NULL",
+                    (now_iso(), previous_cycle),
+                )
+                interrupted = bool(cursor.rowcount)
             for row in rows:
                 cycle = connection.execute("SELECT status FROM cycles WHERE cycle_id = ?", (row["cycle_id"],)).fetchone()
                 done = cycle is not None and cycle["status"] == "FINALIZADO"

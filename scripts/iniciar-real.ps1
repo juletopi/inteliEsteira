@@ -4,7 +4,10 @@ param(
     [Parameter(Mandatory = $true)][string]$TokenFile,
     [Parameter(Mandatory = $true)][string]$PickupRoi,
     [switch]$ProfilesCalibrated,
-    [int]$CameraIndex = 0
+    [int]$CameraIndex = 0,
+    [ValidateRange(2, 100)][int]$PresenceDistanceCm = 10,
+    [ValidateSet(3000, 4000, 5000)][int]$PresenceStableMs = 3000,
+    [switch]$RequirePhysicalArrival
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -18,7 +21,8 @@ $python = Join-Path $projectRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python)) { throw 'Crie a .venv e instale requirements.txt.' }
 $names = @('HARDWARE_MODE','ARDUINO_PORT','ARDUINO_BAUDRATE','CONVEYOR_MODE','EV3_HOST',
     'EV3_TOKEN','EV3_PORT','CAMERA_MODE','CAMERA_INDEX','CAMERA_PICKUP_ROI',
-    'GRIPPER_PROFILE_CALIBRATED','ARRIVAL_SENSOR_MODE','REQUIRE_PHYSICAL_ARRIVAL')
+    'GRIPPER_PROFILE_CALIBRATED','ARRIVAL_SENSOR_MODE','REQUIRE_PHYSICAL_ARRIVAL',
+    'AUTO_OPERATION','PRESENCE_DISTANCE_CM','PRESENCE_STABLE_MS')
 $saved = @{}
 foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
@@ -33,8 +37,11 @@ try {
     $env:CAMERA_INDEX = [string]$CameraIndex
     $env:CAMERA_PICKUP_ROI = $PickupRoi
     $env:GRIPPER_PROFILE_CALIBRATED = '1'
-    $env:ARRIVAL_SENSOR_MODE = 'arduino'
-    $env:REQUIRE_PHYSICAL_ARRIVAL = '1'
+    $env:AUTO_OPERATION = '1'
+    $env:PRESENCE_DISTANCE_CM = [string]$PresenceDistanceCm
+    $env:PRESENCE_STABLE_MS = [string]$PresenceStableMs
+    $env:ARRIVAL_SENSOR_MODE = if ($RequirePhysicalArrival) { 'arduino' } else { 'conveyor' }
+    $env:REQUIRE_PHYSICAL_ARRIVAL = if ($RequirePhysicalArrival) { '1' } else { '0' }
     Push-Location -LiteralPath $projectRoot
     try { & $python -m scripts.servidor }
     finally { Pop-Location }

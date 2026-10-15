@@ -73,6 +73,10 @@ individuais da API, durante a espera pela conclusão de um movimento.
 
 ## Sensores
 
+A operacao automatica habilita o HC-SR04 com `CMD:PRESENCA:PRESENCA:CONFIGURAR:10:3000`.
+O firmware confirma por ACK e emite `SENSOR:PRESENTE:<cm>` / `SENSOR:AUSENTE:<cm>`.
+O backend usa essa presenca para coletar em P01 e le o ArUco somente apos a entrega em E01.
+
 O HC-SR04 mantém a leitura e a configuração de presença do calibrador. Ele não
 substitui a identificação ArUco nem mede chegada nas saídas da esteira.
 `backend_config.h` define entradas digitais R01–R10, inicialmente `-1` (ausentes).

@@ -21,6 +21,7 @@ from hardware.protocol import (
     validate_command,
 )
 from hardware.telemetry import Telemetry
+from hardware.presence import PresenceSensor
 
 
 class MockArduino(Arduino):
@@ -41,6 +42,7 @@ class MockArduino(Arduino):
         self.conveyor_state = "parada"
         self.destination: str | None = None
         self.telemetry = Telemetry()
+        self.presence = PresenceSensor()
         self.pickup_zone = "P01"
         self.sensor_destination = None
         self._suppress_gripper = defaultdict(int)
@@ -156,6 +158,9 @@ class MockArduino(Arduino):
                 self._events.put(message)
 
     def _apply_command(self, command: str, cycle_id: str) -> None:
+        if command.startswith("PRESENCA:CONFIGURAR:"):
+            self.presence.reset()
+            return
         if command == "SISTEMA:PING":
             return
         if command == "GARRA:AREA:P01":

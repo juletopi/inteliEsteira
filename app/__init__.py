@@ -28,6 +28,12 @@ def create_app(test_config=None):
     app.register_blueprint(pages_bp)
     app.register_blueprint(api_bp)
 
+    if app.config.get("AUTO_OPERATION", True) and not app.config.get("TESTING"):
+        try:
+            app.extensions["workflow"].start()
+        except (ValueError, RuntimeError) as exc:
+            app.logger.warning("Operacao automatica aguarda recuperacao: %s", exc)
+
     return app
 
 
@@ -91,18 +97,43 @@ def _configure_controller(app):
     elif conveyor_mode == "mock":
         conveyor_device = MockArduino()
         conveyor_device.connect()
-    elif conveyor_mode == "ev3":
+    elif conveyor_mode in {"ev3", "ev3_simulator"}:
+        ev3_host = app.config.get("EV3_HOST", "")
+        ev3_port = app.config.get("EV3_PORT", 8765)
+        ev3_token = app.config.get("EV3_TOKEN", "")
+        if conveyor_mode == "ev3_simulator":
+            from secrets import token_hex
+            from threading import Thread
+            from ev3.simulator import EV3Simulator
+
+            ev3_token = token_hex(16)
+            server = EV3Simulator(token=ev3_token, delay=app.config.get("EV3_SIMULATOR_DELAY", 0.3))
+            server_thread = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+            server_thread.start()
+            ev3_host, ev3_port = server.server_address
+            app.extensions["conveyor_server"] = server
+
+            def stop_conveyor_server():
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=1)
+
+            app.extensions["stop_conveyor_server"] = stop_conveyor_server
+            atexit.register(stop_conveyor_server)
         conveyor_device = EV3Adapter(
-            host=app.config.get("EV3_HOST", ""),
-            port=app.config.get("EV3_PORT", 8765),
-            token=app.config.get("EV3_TOKEN", ""),
+            host=ev3_host,
+            port=ev3_port,
+            token=ev3_token,
             connect_timeout=app.config.get("EV3_CONNECT_TIMEOUT", 2.0),
         )
+        if conveyor_mode == "ev3_simulator" or app.config.get("EV3_IS_SIMULATED"):
+            conveyor_device.mode = "ev3_simulator"
+            conveyor_device.arrival_source = "simulado"
         # Conecta pela tela/API ou no preflight do ciclo; iniciar Flask nao move nada.
         atexit.register(conveyor_device.disconnect)
     else:
         raise RuntimeError(
-            "CONVEYOR_MODE deve ser 'arduino', 'mock' ou 'ev3'. "
+            "CONVEYOR_MODE deve ser 'arduino', 'mock', 'ev3' ou 'ev3_simulator'. "
             f"Valor recebido: {conveyor_mode!r}."
         )
     camera_mode = str(app.config.get("CAMERA_MODE", "mock")).strip().lower()
@@ -136,7 +167,7 @@ def _configure_controller(app):
         arrival_timeout=app.config.get("ARRIVAL_TIMEOUT", 35.0),
         command_retries=app.config.get("COMMAND_RETRIES", 1),
         gripper_timeout=app.config.get("GRIPPER_COMPLETION_TIMEOUT", 30.0),
-        require_physical_arrival=app.config.get("REQUIRE_PHYSICAL_ARRIVAL", True),
+        require_physical_arrival=app.config.get("REQUIRE_PHYSICAL_ARRIVAL", False),
     )
 
     app.extensions["system_controller"] = controller
@@ -146,6 +177,8 @@ def _configure_controller(app):
     app.extensions["database"] = database
     app.extensions["product_repository"] = products
     app.extensions["cycle_repository"] = cycles
-    workflow = Workflow(controller, QueueRepository(database))
+    workflow = Workflow(controller, QueueRepository(database),
+                        presence_distance=app.config.get("PRESENCE_DISTANCE_CM", 10),
+                        presence_stable_ms=app.config.get("PRESENCE_STABLE_MS", 3000))
     app.extensions["workflow"] = workflow
     atexit.register(workflow.shutdown)

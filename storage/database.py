@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS operation_queue (
     status TEXT NOT NULL DEFAULT 'PENDENTE',
     cycle_id TEXT,
     error TEXT,
+    origin TEXT NOT NULL DEFAULT 'manual',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (product_id) REFERENCES products(product_id)
@@ -84,6 +85,10 @@ class Database:
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(products)")}
             if "deleted_at" not in columns:
                 connection.execute("ALTER TABLE products ADD COLUMN deleted_at TEXT")
+            queue_columns = {row["name"] for row in connection.execute("PRAGMA table_info(operation_queue)")}
+            if "origin" not in queue_columns:
+                connection.execute("ALTER TABLE operation_queue ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual'")
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_automatic_cycle ON operation_queue(cycle_id) WHERE origin = 'automatico'")
 
     @contextmanager
     def connect(self):

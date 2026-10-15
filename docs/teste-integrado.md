@@ -14,21 +14,20 @@ Na raiz do projeto, com as dependencias da `.venv` instaladas:
 ```
 
 O comando usa sockets locais de verdade para os dois controladores, banco
-temporario e camera simulada. Testa dez ciclos, balanceamento R01–R10, bloqueio
-de etiqueta fora da ordem e registro de chegada simulada. Nao acessa a COM, o
+temporario e camera simulada. Testa dez ciclos automaticos pelo HC-SR04,
+balanceamento R01–R10, leitura apos a coleta e registro de chegada simulada. Nao acessa a COM, o
 EV3 fisico ou `data/inteliesteira.db`. Finaliza e encerra os simuladores.
 
-Para operar manualmente pelo painel:
+Para acompanhar a operacao automatica pelo painel:
 
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.bancada --database output/bancada.db
 ```
 
-Abra http://127.0.0.1:5001. Em Dashboard, adicione produtos TESTE-AM/PR/SP/CE/GO a
-fila, clique em **Iniciar fluxo** e use **Simular leitura** com o produto esperado.
-Confira mensagens e confirmacoes no diagnostico. **Parar** interrompe; **Resetar**
-prepara a retomada logica. Um item interrompido requer inspecao e nova tentativa
-ou cancelamento. O transporte e a chegada exibidos aqui sao simulados.
+Abra http://127.0.0.1:5001. A fila e criada pela identificacao, sem cadastro manual
+ou botoes no bloco da camera. Injete etiqueta e presenca pelas APIs de simulacao
+do [guia de operacao automatica](operacao-fila.md). O transporte e a chegada
+exibidos aqui sao simulados. Falhas exigem inspecao e recuperacao pelas APIs de manutencao.
 
 O argumento `--database` preserva catalogo, IDs ArUco, fila e historico entre
 aberturas. Sem ele, a bancada comeca vazia a cada execucao. O teste automatico
@@ -41,16 +40,16 @@ Nao abra duas instancias usando o mesmo arquivo.
 .\.venv\Scripts\python.exe -m scripts.bancada --camera opencv --database output/bancada.db
 ```
 
-Na tela Produtos, baixe e imprima as etiquetas dos produtos desse banco. Planeje
-a fila e apresente uma etiqueta por vez. Agora a leitura vem da camera, enquanto
-garra, motores e chegada continuam virtuais. Retire a etiqueta anterior do
+Na tela Produtos, baixe e imprima as etiquetas dos produtos desse banco. Injete
+presenca na API de simulacao e apresente uma etiqueta em E01, apos a coleta virtual.
+A leitura vem da camera, enquanto garra, motores e chegada continuam virtuais. Retire a etiqueta anterior do
 enquadramento entre unidades. Etiquetas do banco principal nao necessariamente
 tem os mesmos IDs no banco da bancada; gere as etiquetas na propria bancada.
 
 `CAMERA_INDEX` seleciona a webcam. `CAMERA_PICKUP_ROI=x,y,largura,altura` delimita
 o retangulo em fracoes de 0 a 1. O padrao `0,0,1,1` usa o frame inteiro: ajuste
-esse valor ao gabarito P01 real. A moldura aparece no preview. O retangulo
-autoriza uma coleta fixa; nao calcula coordenadas nem alcance do braco.
+esse valor a area E01 na esteira. A moldura aparece no preview. A coleta fixa em
+P01 e autorizada pelo HC-SR04; a camera nao calcula coordenadas ou alcance do braco.
 
 ## 3. Preparar a garra real
 
@@ -150,7 +149,7 @@ Referencia: [servicos systemd](https://www.freedesktop.org/software/systemd/man/
 
 ## 6. Operar o conjunto real pelo painel
 
-Com IP, COM, perfis, sensores e retangulo P01 confirmados:
+Com IP, COM, perfis, HC-SR04 e retangulo de leitura E01 confirmados:
 
 ```powershell
 .\scripts\iniciar-real.ps1 -Ev3Host <IP_REAL> -ArduinoPort <COM_REAL> `
@@ -158,13 +157,14 @@ Com IP, COM, perfis, sensores e retangulo P01 confirmados:
 ```
 
 Substitua os campos entre `<...>`; nao execute os marcadores literalmente. Use
-aspas no valor de `-PickupRoi`, por exemplo no valor que voce mediu para P01.
-O script mantem `REQUIRE_PHYSICAL_ARRIVAL=1`, exige sensor no Arduino e inicia
-Flask sem reloader. Nao grava a placa, instala servicos ou calibra motores.
+aspas no valor de `-PickupRoi`; apesar do nome historico, delimita a leitura em E01.
+O script inicia o Flask e a observacao automatica sem reloader. A conclusao
+padrao vem do evento do controlador da esteira. `-RequirePhysicalArrival` exige
+sensores adicionais de chegada no Arduino. Nao grava a placa, instala servicos ou calibra motores.
 Feche o monitor serial e o calibrador para liberar a COM ao backend.
 
-Abra http://127.0.0.1:5000 e use **Verificar comunicacao → Resetar → Iniciar fluxo**.
-Comece com uma unidade, confira a trajetoria e a chegada na saida esperada; depois
+Abra http://127.0.0.1:5000. Aguarde a liberacao, apresente um cubo ao HC-SR04 em
+P01 e acompanhe coleta, leitura, transporte e conclusao da unidade na fila. Confira a trajetoria e a saida esperada; depois
 teste as duas saidas de cada regiao, parada durante movimento, etiqueta incorreta,
 sensor bloqueado e perda de conexao. O proximo item so avanca apos conclusao.
 O EV3 ainda precisa de verificacao das rotacoes, referencia inicial e retorno do
