@@ -5,4 +5,7 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=True)
+    try:
+        app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
+    finally:
+        app.extensions["workflow"].shutdown()

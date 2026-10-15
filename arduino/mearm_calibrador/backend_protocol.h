@@ -156,6 +156,17 @@ bool processarFrameBackend(const char *line) {
   for (size_t i = 0; i < length; ++i)
     if (!isAlphaNumeric(cycle[i]) && cycle[i] != '_' && cycle[i] != '-') return true;
   const char *command = separator + 1;
+  if (strncmp(command, "PRESENCA:CONFIGURAR:", 20) == 0) {
+    int distance = 0; unsigned long stable = 0; char trailing;
+    if (sscanf(command + 20, "%d:%lu%c", &distance, &stable, &trailing) != 2 ||
+        distance < 2 || distance > 100 || (stable != 3000 && stable != 4000 && stable != 5000)) {
+      backendError(cycle, command, F("INVALID_SENSOR_CONFIG")); return true;
+    }
+    if (cicloEmExecucao) { backendError(cycle, command, F("BUSY")); return true; }
+    sensorDistanceCm = distance; sensorStableMs = stable; sensorEnabled = true;
+    sensorCandidate = sensorPresent = false; sensorClearSince = 0;
+    backendLastValid = millis(); backendAck(cycle, command); return true;
+  }
   if (backendIs(command, F("SISTEMA:PING"))) {
     backendLastValid = millis(); backendAck(cycle, command); return true;
   }

@@ -32,6 +32,7 @@ def virtual_bench(database, *, camera="mock", arduino_options=None):
             thread.start()
             threads.append(thread)
         app = create_app({
+            "AUTO_OPERATION": False, "EV3_IS_SIMULATED": True,
             "DATABASE_PATH": Path(database), "BOOTSTRAP_CATALOG": False,
             "HARDWARE_MODE": "simulator", "ARDUINO_SIMULATOR_PORT": arduino.server_address[1],
             "CONVEYOR_MODE": "ev3", "EV3_HOST": "127.0.0.1",
@@ -86,17 +87,14 @@ def smoke_test(app, arduino, ev3):
     """Exercita os dez destinos pela API e pelos dois sockets, sem motores."""
     client = app.test_client()
     planned = [product for product, _uf in PRODUCTS for _unit in range(2)]
-    request_ok(client, "/api/queue", json={"produto_ids": planned})
     request_ok(client, "/api/flow/start")
-    # Uma etiqueta valida fora da ordem nao pode disparar coleta.
-    request_ok(client, "/api/simulation/camera", json={"produto_id": "TESTE-GO"})
-    wait_for(app, lambda snapshot: snapshot["fluxo"].get("detectado") == "TESTE-GO")
-    if any(command == "GARRA:PEGAR" for _cycle, command in arduino.commands_applied):
-        raise AssertionError("Etiqueta fora da ordem autorizou a garra.")
     for index, product in enumerate(planned, start=1):
+        wait_for(app, lambda snapshot: snapshot["proxima_caixa_liberada"])
+        request_ok(client, "/api/simulation/presence", json={"presente": False})
         request_ok(client, "/api/simulation/camera", json={"produto_id": product})
-        wait_for(app, lambda _snapshot: app.extensions["cycle_repository"].count_completed() == index)
-    wait_for(app, lambda snapshot: not snapshot["fluxo"]["ativo"])
+        request_ok(client, "/api/simulation/presence", json={"presente": True})
+        wait_for(app, lambda snapshot: app.extensions["cycle_repository"].count_completed() == index and snapshot["proxima_caixa_liberada"])
+    app.extensions["workflow"].shutdown()
     cycles = app.extensions["cycle_repository"].list_recent(20)
     if {cycle["destino"] for cycle in cycles} != {f"R{i:02}" for i in range(1, 11)}:
         raise AssertionError(cycles)
@@ -107,7 +105,7 @@ def smoke_test(app, arduino, ev3):
         arrivals = [event for event in stored["eventos"] if event["tipo"] == "DESTINO_ALCANCADO"]
         if len(arrivals) != 1 or arrivals[0]["dados"].get("fisica") is not False:
             raise AssertionError("Simulacao sem comprovacao ou registrada como chegada fisica.")
-    print("OK: 10 ciclos, 10 destinos, etiqueta fora da ordem bloqueada, Arduino e EV3 via TCP; chegada SIMULADA.")
+    print("OK: 10 ciclos automaticos, 10 destinos, HC-SR04 antes da coleta, leitura na esteira, Arduino e EV3 via TCP; chegada SIMULADA.")
 
 
 def main():
@@ -131,6 +129,7 @@ def main():
             if args.smoke_test:
                 smoke_test(app, arduino, ev3)
             else:
+                request_ok(app.test_client(), "/api/flow/start")
                 print(f"BANCADA VIRTUAL: http://127.0.0.1:{args.port} — sem motores reais.", flush=True)
                 print(f"Banco {'persistente' if args.database else 'temporario'}: {database}", flush=True)
                 print("Produtos TESTE-AM/PR/SP/CE/GO. Camera mock: use Simular leitura no painel.", flush=True)

@@ -102,7 +102,10 @@ int main(int argc, char **argv) {
         check(pontoY.base == 130 && pontoX.base == 35 && pontoNeutro.base == 88 && angGarraFechada == 87, "posicoes/garra nao recarregaram da EEPROM");
         check(sensorEnabled && sensorDistanceCm == 12 && sensorStableMs == 4000 && backendCalibracaoValida(), "configuracao HC-SR04/liberacao nao persistiu");
       } else if (scenario == "presence") {
-        processarComando("SENSOR:ON:12:3000"); hostEcho = 8 * 58;
+        processarComando("CMD:PRESENCA:PRESENCA:CONFIGURAR:12:3000"); hostEcho = 8 * 58;
+        check(count("ACK:PRESENCA:PRESENCA:CONFIGURAR:12:3000") == 1, "configuracao HC-SR04 nao confirmada");
+        processarComando("CMD:PRESENCA:PRESENCA:CONFIGURAR:101:3000");
+        check(count("INVALID_SENSOR_CONFIG") == 1 && sensorDistanceCm == 12, "configuracao HC-SR04 invalida aceita");
         for (int i = 0; i < 55; ++i) { hostMillis += 60; monitorarSensor(); }
         check(sensorPresent && count("SENSOR:PRESENTE:8") == 1, "HC-SR04 nao detectou presenca estavel");
         check(writes() == 0 && !backendOcupado(), "presenca acionou braco sem autorizacao");

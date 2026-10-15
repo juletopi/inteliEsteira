@@ -50,8 +50,8 @@ Controller
 
 ### Funcionalidades
 
-- Operação por fila planejada no Dashboard, com leitura automática pela câmera
-  antes da coleta, eventos de conclusão e diagnóstico das mensagens. Veja o
+- Operação automática pelo HC-SR04: coleta em P01, leitura ArUco na esteira E01,
+  fila criada pela identificação e liberação da próxima caixa após o término da esteira. Veja o
   [roteiro de operação e validação sem Arduino](docs/operacao-fila.md).
 - Banco SQLite local para fila, cadastros e histórico; `data/catalogo-inicial.json`
   inicializa somente bancos vazios, preservando os IDs em uma instalação nova.
@@ -263,13 +263,13 @@ O ciclo percorre os estados:
 ```text
 IDLE
   -> AGUARDANDO_OBJETO
-  -> LENDO_QR
-  -> VALIDANDO_QR
-  -> DESTINO_DEFINIDO
   -> PEGANDO_OBJETO
   -> POSICIONANDO_OBJETO
   -> SOLTANDO_OBJETO
   -> OBJETO_POSICIONADO
+  -> LENDO_QR
+  -> VALIDANDO_QR
+  -> DESTINO_DEFINIDO
   -> TRANSPORTANDO
   -> FINALIZADO
 ```
@@ -277,12 +277,12 @@ IDLE
 Comandos produzidos para o Arduino simulado:
 
 ```text
-CMD:<ciclo>:DESTINO:R08
 CMD:<ciclo>:GARRA:AREA:P01
 CMD:<ciclo>:GARRA:PEGAR
 CMD:<ciclo>:GARRA:POSICIONAR:E01
 CMD:<ciclo>:GARRA:SOLTAR
 CMD:<ciclo>:GARRA:HOME
+CMD:<ciclo>:DESTINO:R08
 CMD:<ciclo>:ESTEIRA:START
 EVT:<ciclo>:DESTINO_ALCANCADO:R08
 CMD:<ciclo>:ESTEIRA:STOP
@@ -295,7 +295,7 @@ POST /api/system/stop
 POST /api/system/reset
 ```
 
-Falhas de câmera, comandos rejeitados e ausência da confirmação do sensor levam
+Falhas de câmera, comandos rejeitados e ausência do evento de término da esteira levam
 o sistema ao estado `ERRO`, param a esteira e exigem um reset antes do próximo
 ciclo.
 
@@ -472,19 +472,23 @@ $env:EV3_PORT = "8765"
 $env:EV3_TOKEN = "<MESMA_CHAVE_DO_TOKEN_TXT>"
 $env:CAMERA_MODE = "opencv"
 $env:GRIPPER_PROFILE_CALIBRATED = "1"    # Somente depois de calibrar o firmware físico.
-$env:ARRIVAL_SENSOR_MODE = "arduino"
+$env:ARRIVAL_SENSOR_MODE = "conveyor"
+$env:REQUIRE_PHYSICAL_ARRIVAL = "0"      # Conclusao pelo evento do controlador da esteira.
+$env:AUTO_OPERATION = "1"
 $env:ARRIVAL_TIMEOUT = "35"
 .\.venv\Scripts\python.exe start.py
 ```
 
-Use **Conexão → Tentar conectar**. Depois de inspecionar a montagem e posicionar
-manualmente a referência inicial, use **Resetar** e execute um produto por vez.
-O Dashboard inicia a fila com `POST /api/flow/start`; a API também oferece ciclos
-individuais em `POST /api/cycles`. O frontend não envia `codR` nem escolhe a
-UF por conta própria. O backend só movimenta a garra depois de conectar ambos
-os controladores. O padrão `REQUIRE_PHYSICAL_ARRIVAL=1` exige sensor real no
-Arduino para operar o EV3. Sem os equipamentos completos, use a bancada virtual
-descrita no guia; firmware mock não comprova coleta ou chegada físicas.
+Depois de calibrar e inspecionar a montagem, inicie `start.py`. O Flask inicia a
+observação automática do HC-SR04, sem botões de partida e sem fila manual no
+Dashboard. O sensor autoriza a coleta; a câmera identifica a unidade somente
+depois de depositada em E01. O backend cadastra a unidade na fila, define o
+destino e aguarda o evento de término da esteira antes da próxima coleta.
+O padrão `REQUIRE_PHYSICAL_ARRIVAL=0` aceita a conclusão do movimento informado
+pelo EV3, sem afirmar que há um sensor físico de chegada. Quem mantiver sensores
+nas saídas pode optar por `ARRIVAL_SENSOR_MODE=arduino` e `REQUIRE_PHYSICAL_ARRIVAL=1`.
+O [guia de operação automática](docs/operacao-fila.md) contém os comandos de
+validação e recuperação. Firmware mock não comprova coleta ou chegada físicas.
 
 `GET /api/status` diferencia `arduino` e `esteira_conectada`, informa
 `esteira_modo`, `ev3_host`, `ev3_porta` e nunca expõe a chave. `POST

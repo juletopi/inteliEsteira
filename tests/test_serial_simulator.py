@@ -34,13 +34,20 @@ class SerialSimulatorTests(unittest.TestCase):
             self.directory.cleanup()
 
     def run_flow(self, products=("FIRST",)):
-        self.assertEqual(self.client.post("/api/queue", json={"produto_ids": list(products)}).status_code, 201)
-        for product in products:
-            self.client.post("/api/simulation/camera", json={"produto_id": product})
         self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
-        deadline = monotonic() + 5
-        while self.flow.running() and monotonic() < deadline:
-            sleep(0.01)
+        for index, product in enumerate(products, start=1):
+            deadline = monotonic() + 5
+            while not self.flow.snapshot()["proxima_caixa_liberada"] and self.flow.running() and monotonic() < deadline:
+                sleep(0.01)
+            if not self.flow.running():
+                break
+            self.client.post("/api/simulation/camera", json={"produto_id": product})
+            self.client.post("/api/simulation/presence", json={"presente": False})
+            self.client.post("/api/simulation/presence", json={"presente": True})
+            while self.app.extensions["cycle_repository"].count_completed() < index and self.flow.running() and monotonic() < deadline:
+                sleep(0.01)
+        if self.flow.running():
+            self.flow.shutdown()
         self.assertFalse(self.flow.running(), self.flow.snapshot())
 
     def test_full_protocol_flow_and_lost_ack_do_not_repeat_gripper_action(self):
@@ -63,7 +70,7 @@ class SerialSimulatorTests(unittest.TestCase):
     def test_ack_only_gripper_fault_blocks_the_next_unit(self):
         self.start_simulator(suppress_events=("GARRA_COLETA_CONCLUIDA",))
         self.run_flow(("FIRST", "SECOND"))
-        self.assertEqual(self.flow.repository.head()["estado"], "ERRO")
+        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
         commands = [command for _cycle, command in self.server.commands_applied]
         self.assertNotIn("GARRA:POSICIONAR:E01", commands)
         self.assertNotIn("ESTEIRA:START", commands)
@@ -72,13 +79,13 @@ class SerialSimulatorTests(unittest.TestCase):
     def test_wrong_destination_is_not_accepted_as_arrival(self):
         self.start_simulator(wrong_destination=True)
         self.run_flow()
-        self.assertEqual(self.flow.repository.head()["estado"], "ERRO")
+        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
         self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
 
     def test_connection_loss_is_visible_and_does_not_advance_queue(self):
         self.start_simulator(disconnect_at="GARRA:POSICIONAR:E01")
         self.run_flow(("FIRST", "SECOND"))
-        self.assertEqual(self.flow.repository.head()["estado"], "ERRO")
+        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
         self.assertFalse(self.app.extensions["arduino"].is_connected())
         self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
 

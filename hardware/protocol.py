@@ -71,6 +71,8 @@ def validate_command(command: str) -> str:
     }
     if normalized in fixed_commands:
         return normalized
+    if re.fullmatch(r"PRESENCA:CONFIGURAR:(?:[2-9]|[1-9][0-9]|100):[345]000", normalized):
+        return normalized
 
     if normalized.startswith("DESTINO:"):
         destination = normalized.removeprefix("DESTINO:")

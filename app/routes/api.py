@@ -419,18 +419,7 @@ def operation_queue():
 
 @api_bp.post("/queue")
 def enqueue_products():
-    payload = request.get_json(silent=True)
-    product_ids = payload.get("produto_ids") if isinstance(payload, dict) else None
-    if not isinstance(product_ids, list) or not 1 <= len(product_ids) <= 100:
-        return _error_response("INVALID_REQUEST", "Envie de 1 a 100 identificadores em produto_ids.", 400)
-    try:
-        product_ids = [validate_product_id(value) for value in product_ids]
-        ids = current_app.extensions["workflow"].repository.enqueue(product_ids)
-    except ClassificationError as exc:
-        return _error_response(exc.code, exc.message, 400)
-    except QueueError as exc:
-        return _error_response(exc.code, str(exc), 409)
-    return jsonify({"ok": True, "ids": ids, **current_app.extensions["workflow"].snapshot()}), 201
+    return _error_response("AUTOMATIC_QUEUE", "A fila e criada pela identificacao da camera. Cadastro manual de unidades desativado.", 409)
 
 
 @api_bp.delete("/queue/<int:item_id>")
@@ -444,11 +433,7 @@ def cancel_queue_item(item_id):
 
 @api_bp.post("/queue/<int:item_id>/retry")
 def retry_queue_item(item_id):
-    try:
-        current_app.extensions["workflow"].repository.edit(item_id, "retry")
-    except QueueError as exc:
-        return _error_response(exc.code, str(exc), 409)
-    return jsonify({"ok": True, **current_app.extensions["workflow"].snapshot()})
+    return _error_response("AUTOMATIC_QUEUE", "Uma nova tentativa requer inspecao e nova deteccao do HC-SR04.", 409)
 
 
 @api_bp.post("/flow/start")
@@ -476,6 +461,19 @@ def simulate_camera_read():
         return _error_response(exc.code, exc.message, 400)
     camera.enqueue_qr_code(build_product_qr_payload(product_id))
     return jsonify({"ok": True})
+
+
+@api_bp.post("/simulation/presence")
+def simulate_presence():
+    arduino = current_app.extensions["arduino"]
+    if getattr(arduino, "mode", None) not in {"mock", "simulator"}:
+        return _error_response("SIMULATION_DISABLED", "O HC-SR04 real nao aceita presenca injetada pela API.", 403)
+    payload = request.get_json(silent=True)
+    present = payload.get("presente") if isinstance(payload, dict) else None
+    if not isinstance(present, bool):
+        return _error_response("INVALID_REQUEST", "Envie presente como verdadeiro ou falso.", 400)
+    arduino.presence.update(present, 5 if present else -1)
+    return jsonify({"ok": True, "sensor": arduino.presence.snapshot()})
 
 
 @api_bp.get("/diagnostics")

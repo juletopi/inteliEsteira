@@ -1,7 +1,5 @@
-import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Event
 from time import monotonic, sleep
 import unittest
 
@@ -13,17 +11,15 @@ from vision.qrcode import build_product_qr_payload
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.directory = TemporaryDirectory()
-        self.path = Path(self.directory.name) / "queue.db"
-        self.config = {"TESTING": True, "DATABASE_PATH": self.path, "COMMAND_TIMEOUT": 0.03,
-                       "GRIPPER_COMPLETION_TIMEOUT": 0.1, "ARRIVAL_TIMEOUT": 0.1}
+        self.path = Path(self.directory.name) / "automatic.db"
+        self.config = {"TESTING": True, "AUTO_OPERATION": False, "DATABASE_PATH": self.path,
+                       "COMMAND_TIMEOUT": 0.03, "GRIPPER_COMPLETION_TIMEOUT": 0.15, "ARRIVAL_TIMEOUT": 0.2}
         self.app = create_app(self.config)
         self.client = self.app.test_client()
         self.flow = self.app.extensions["workflow"]
-        self.flow.scan_interval = 0.005
-        self.products = self.app.extensions["product_repository"]
-        for product, uf in (("FIRST", "CE"), ("SECOND", "SP"), ("THIRD", "AM")):
-            self.products.create(product, uf)
         self.hardware = self.app.extensions["arduino"]
+        for product, state in (("FIRST", "CE"), ("SECOND", "SP")):
+            self.app.extensions["product_repository"].create(product, state)
 
     def tearDown(self):
         self.flow.shutdown()
@@ -38,144 +34,187 @@ class WorkflowTests(unittest.TestCase):
             sleep(0.005)
         self.assertTrue(predicate(), self.flow.snapshot())
 
-    def plan(self, ids):
-        response = self.client.post("/api/queue", json={"produto_ids": ids})
-        self.assertEqual(response.status_code, 201, response.get_json())
-        return response.get_json()["ids"]
+    def start(self):
+        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
+        self.wait_for(lambda: self.flow.snapshot()["proxima_caixa_liberada"])
 
-    def scan(self, product):
-        self.assertEqual(self.client.post("/api/simulation/camera", json={"produto_id": product}).status_code, 200)
+    def present(self, product):
+        self.client.post("/api/simulation/camera", json={"produto_id": product})
+        self.client.post("/api/simulation/presence", json={"presente": False})
+        self.client.post("/api/simulation/presence", json={"presente": True})
 
     def commands(self):
         return [parse_message(frame).payload for frame in self.hardware.command_log]
 
-    def test_planned_order_is_persistent_and_does_not_start_movement(self):
-        self.plan(["SECOND", "FIRST", "FIRST"])
-        restarted = create_app(self.config)
-        items = restarted.extensions["workflow"].snapshot()["itens"]
-        self.assertEqual([item["produto_id"] for item in items], ["SECOND", "FIRST", "FIRST"])
-        self.assertTrue(all(item["estado"] == "PENDENTE" for item in items))
-        self.assertEqual(self.hardware.command_log, [])
+    def completed(self, count):
+        self.wait_for(lambda: len([i for i in self.flow.snapshot()["itens"] if i["estado"] == "FINALIZADO"]) == count
+                      and self.flow.snapshot()["proxima_caixa_liberada"])
 
-    def test_wrong_product_waits_and_camera_authorizes_only_the_queue_head(self):
-        self.plan(["FIRST", "SECOND"])
-        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
-        self.scan("SECOND")
-        self.wait_for(lambda: self.flow.snapshot()["fluxo"].get("detectado") == "SECOND")
+    def test_camera_alone_does_not_authorize_pickup_or_create_queue(self):
+        self.start()
+        self.client.post("/api/simulation/camera", json={"produto_id": "FIRST"})
+        sleep(0.06)
         self.assertNotIn("GARRA:PEGAR", self.commands())
-        self.assertNotIn("ESTEIRA:START", self.commands())
-        self.scan("FIRST")
-        self.wait_for(lambda: self.app.extensions["cycle_repository"].count_completed() == 1)
-        self.assertEqual(self.flow.repository.head()["produto_id"], "SECOND")
-        self.scan("SECOND")
-        self.wait_for(lambda: not self.flow.running())
-        cycles = self.app.extensions["cycle_repository"].list_recent()
-        self.assertEqual([cycle["produto_id"] for cycle in reversed(cycles)], ["FIRST", "SECOND"])
-        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "CONCLUIDO")
+        self.assertEqual(self.flow.snapshot()["itens"], [])
+        self.assertEqual(self.client.post("/api/queue", json={"produto_ids": ["FIRST"]}).status_code, 409)
 
-    def test_repeated_product_requires_label_to_leave_capture_area(self):
-        self.plan(["FIRST", "FIRST"])
-        clear = Event()
-        self.app.extensions["camera"].wait_until_clear = lambda timeout, cancelled: clear.wait(timeout)
-        self.scan("FIRST")
-        self.scan("FIRST")
-        self.client.post("/api/flow/start")
-        self.wait_for(lambda: self.flow.snapshot()["fluxo"].get("estado") == "AGUARDANDO_AREA_LIVRE")
-        self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
-        clear.set()
-        self.wait_for(lambda: not self.flow.running())
-        self.assertEqual(self.commands().count("GARRA:PEGAR"), 2)
+    def test_sensor_pickup_identification_transport_and_completion_in_that_order(self):
+        self.start()
+        self.present("FIRST")
+        self.completed(1)
+        item = self.flow.snapshot()["itens"][0]
+        self.assertEqual((item["produto_id"], item["macroregiao"], item["destino"]), ("FIRST", "NORDESTE", "R07"))
+        events = self.app.extensions["cycle_repository"].get(item["ciclo_id"], include_events=True)["eventos"]
+        names = [event["tipo"] for event in events]
+        for earlier, later in (("PRESENCA_CONFIRMADA", "OBJETO_COLETADO"),
+                               ("OBJETO_ENTREGUE_NA_ESTEIRA", "QR_LIDO"),
+                               ("QR_LIDO", "ESTEIRA_INICIADA"), ("ESTEIRA_INICIADA", "DESTINO_ALCANCADO")):
+            self.assertLess(names.index(earlier), names.index(later))
 
-    def test_ack_without_gripper_completion_does_not_release_or_start_conveyor(self):
-        self.plan(["FIRST", "SECOND"])
-        self.hardware.suppress_next_gripper_event()
-        self.scan("FIRST")
-        self.client.post("/api/flow/start")
-        self.wait_for(lambda: not self.flow.running())
-        self.assertEqual(self.flow.repository.head()["estado"], "ERRO")
-        self.assertNotIn("GARRA:POSICIONAR:E01", self.commands())
-        self.assertNotIn("GARRA:SOLTAR", self.commands())
-        self.assertNotIn("ESTEIRA:START", self.commands())
-        frames = self.hardware.telemetry.snapshot()
-        self.assertTrue(any(frame["tipo"] == "ACK" and frame["mensagem"] == "GARRA:PEGAR" for frame in frames))
-        self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
+    def test_queue_is_created_only_after_identification_on_the_belt(self):
+        self.start()
+        camera = self.app.extensions["camera"]
+        original = camera.scan_qrcode
 
-    def test_missing_arrival_blocks_completion_and_the_next_product(self):
-        self.plan(["FIRST", "SECOND"])
+        def read_on_belt(**kwargs):
+            self.assertIn("GARRA:SOLTAR", self.commands())
+            self.assertEqual(self.flow.snapshot()["itens"], [])
+            return original(**kwargs)
+
+        camera.scan_qrcode = read_on_belt
+        self.present("SECOND")
+        self.completed(1)
+
+    def test_completion_event_is_required_and_presence_during_transport_is_not_replayed(self):
+        self.start()
+        self.app.extensions["system_controller"].arrival_timeout = 2
         self.hardware.suppress_next_arrival_event()
-        self.scan("FIRST")
-        self.scan("SECOND")
-        self.client.post("/api/flow/start")
-        self.wait_for(lambda: not self.flow.running())
-        self.assertEqual(self.flow.repository.head()["estado"], "ERRO")
+        self.present("FIRST")
+        self.wait_for(lambda: self.app.extensions["system_controller"].state.snapshot()["estado"] == "TRANSPORTANDO")
+        self.assertFalse(self.flow.snapshot()["proxima_caixa_liberada"])
+        self.assertEqual(self.flow.snapshot()["itens"][0]["estado"], "PROCESSANDO")
+        self.hardware.presence.update(False)
+        self.hardware.presence.update(True, 5)
         self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
-        self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
-        self.assertEqual(self.client.post("/api/system/reset").status_code, 200)
+        cycle = self.flow.snapshot()["itens"][0]["ciclo_id"]
+        self.hardware._events.put(parse_message(f"EVT:{cycle}:DESTINO_ALCANCADO:R07"))
+        self.completed(1)
+        sleep(0.06)
+        self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
+        self.present("SECOND")
+        self.completed(2)
+        self.assertEqual([i["produto_id"] for i in self.flow.snapshot()["itens"]], ["FIRST", "SECOND"])
+
+    def test_same_product_is_another_unit_only_after_a_new_presence_edge(self):
+        self.start()
+        self.present("FIRST")
+        self.completed(1)
+        self.hardware.presence.update(True, 5)
+        sleep(0.06)
+        self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
+        self.present("FIRST")
+        self.completed(2)
+        items = self.flow.snapshot()["itens"]
+        self.assertNotEqual(items[0]["ciclo_id"], items[1]["ciclo_id"])
+
+    def test_no_gripper_completion_never_reads_camera_or_starts_conveyor(self):
+        self.start()
+        self.hardware.suppress_next_gripper_event()
+        self.present("FIRST")
+        self.wait_for(lambda: not self.flow.running())
+        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
+        self.assertEqual(self.flow.snapshot()["itens"], [])
+        self.assertNotIn("ESTEIRA:START", self.commands())
+        self.assertNotIn("GARRA:SOLTAR", self.commands())
+
+    def test_unknown_label_leaves_cube_on_stopped_belt_and_blocks_next_pickup(self):
+        self.start()
+        self.present("UNKNOWN")
+        self.wait_for(lambda: not self.flow.running())
+        self.assertIn("GARRA:SOLTAR", self.commands())
+        self.assertNotIn("ESTEIRA:START", self.commands())
+        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
         self.assertEqual(self.client.post("/api/flow/start").status_code, 409)
 
-    def test_stop_keeps_job_interrupted_and_requires_an_explicit_new_attempt(self):
-        ids = self.plan(["FIRST"])
-        self.hardware.suppress_next_gripper_event()
-        self.app.extensions["system_controller"].gripper_timeout = 3
-        self.scan("FIRST")
-        self.client.post("/api/flow/start")
-        self.wait_for(lambda: self.app.extensions["system_controller"].state.snapshot()["estado"] == "PEGANDO_OBJETO")
-        old_cycle = self.flow.repository.head()["ciclo_id"]
+    def test_missing_conveyor_completion_does_not_finish_or_accept_next_unit(self):
+        self.start()
+        self.hardware.suppress_next_arrival_event()
+        self.present("FIRST")
+        self.wait_for(lambda: not self.flow.running())
+        self.assertEqual(self.flow.snapshot()["itens"][0]["estado"], "ERRO")
+        self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
+        self.assertFalse(self.flow.snapshot()["proxima_caixa_liberada"])
+
+    def test_stop_interrupts_active_unit_and_requires_operator_recovery(self):
+        self.start()
+        self.hardware.suppress_next_arrival_event()
+        self.app.extensions["system_controller"].arrival_timeout = 2
+        self.present("FIRST")
+        self.wait_for(lambda: self.app.extensions["system_controller"].state.snapshot()["estado"] == "TRANSPORTANDO")
         self.assertEqual(self.client.post("/api/system/stop").status_code, 200)
         self.wait_for(lambda: not self.flow.running())
-        self.assertEqual(self.flow.repository.head()["estado"], "INTERROMPIDO")
-        self.assertEqual(self.client.post("/api/system/reset").status_code, 200)
+        self.assertEqual(self.flow.snapshot()["itens"][0]["estado"], "INTERROMPIDO")
         self.assertEqual(self.client.post("/api/flow/start").status_code, 409)
-        self.assertEqual(self.client.post(f"/api/queue/{ids[0]}/retry").status_code, 200)
-        self.scan("FIRST")
-        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
-        self.wait_for(lambda: not self.flow.running())
-        new_cycle = self.flow.repository.recent()[0]["ciclo_id"]
-        self.assertNotEqual(new_cycle, old_cycle)
-        self.assertEqual(self.app.extensions["cycle_repository"].get(old_cycle)["estado"], "PARADO")
 
-    def test_second_process_and_manual_cycle_cannot_bypass_the_active_queue(self):
-        ids = self.plan(["FIRST"])
-        self.client.post("/api/flow/start")
+    def test_other_process_and_manual_cycle_cannot_take_active_operation(self):
+        self.start()
         second = create_app(self.config)
         self.assertEqual(second.test_client().post("/api/flow/start").status_code, 409)
-        self.assertEqual(self.client.post("/api/cycles", json={"qr_code": build_product_qr_payload("SECOND")}).status_code, 409)
-        self.assertEqual(self.client.delete(f"/api/queue/{ids[0]}").status_code, 409)
-        self.assertEqual(self.client.post("/api/queue", json={"produto_ids": ["SECOND"]}).status_code, 409)
+        self.assertEqual(self.client.post("/api/cycles", json={"qr_code": build_product_qr_payload("FIRST")}).status_code, 409)
         self.assertEqual(second.extensions["arduino"].command_log, [])
 
-    def test_restart_marks_incomplete_job_interrupted_without_replaying_it(self):
-        ids = self.plan(["FIRST"])
-        self.flow.repository.acquire("old-process")
-        self.flow.repository.claim("old-process", ids[0], "old-cycle")
-        self.app.extensions["cycle_repository"].start("old-cycle", build_product_qr_payload("FIRST"))
+    def test_restart_reconciles_unfinished_cycle_without_pickup_replay(self):
+        self.flow.repository.acquire("old")
+        cycles = self.app.extensions["cycle_repository"]
+        cycles.start("unfinished", "")
+        self.flow.repository.set_info("old", ciclo_id="unfinished")
         with self.app.extensions["database"].connect() as connection:
             connection.execute("UPDATE operation_runtime SET lease_until = 0")
         restarted = create_app(self.config)
-        head = restarted.extensions["workflow"].repository.head()
-        self.assertEqual(head["estado"], "INTERROMPIDO")
-        self.assertEqual(restarted.extensions["arduino"].command_log, [])
+        self.assertEqual(restarted.extensions["workflow"].snapshot()["fluxo"]["estado"], "INTERROMPIDO")
         self.assertEqual(restarted.test_client().post("/api/flow/start").status_code, 409)
+        self.assertEqual(cycles.get("unfinished")["estado"], "PARADO")
 
-    def test_restart_reconciles_already_completed_cycle_without_repeating_pickup(self):
-        ids = self.plan(["FIRST"])
-        self.flow.repository.acquire("old-process")
-        self.flow.repository.claim("old-process", ids[0], "old-cycle")
-        self.app.extensions["system_controller"].process_next_product(
-            identified_qr_code=build_product_qr_payload("FIRST"), cycle_id="old-cycle")
+    def test_simulated_sensor_input_cannot_override_real_arduino(self):
+        self.hardware.mode = "serial"
+        self.assertEqual(self.client.post("/api/simulation/presence", json={"presente": True}).status_code, 403)
+        self.assertEqual(self.client.post("/api/simulation/presence", json={"presente": "true"}).status_code, 403)
+
+    def test_heartbeat_failure_blocks_automatic_operation(self):
+        self.start()
+        self.hardware.timeout_next("SISTEMA:PING")
+        self.wait_for(lambda: not self.flow.running())
+        self.assertEqual(self.flow.snapshot()["fluxo"]["erro"]["codigo"], "HEARTBEAT_FAILED")
+        self.assertNotIn("GARRA:PEGAR", self.commands())
+
+    def test_real_gripper_without_calibration_does_not_arm_automatic_pickup(self):
+        self.hardware.mode = "serial"
+        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
+        self.wait_for(lambda: self.flow.snapshot()["fluxo"].get("estado") == "AGUARDANDO_CONEXAO")
+        self.assertNotIn("GARRA:PEGAR", self.commands())
+        self.assertFalse(self.flow.snapshot()["proxima_caixa_liberada"])
+
+    def test_restart_reconciles_completed_cycle_before_queue_was_updated(self):
+        self.flow.repository.acquire("old")
+        cycles = self.app.extensions["cycle_repository"]
+        cycles.start("done", build_product_qr_payload("FIRST"))
+        self.flow.repository.detected("old", "FIRST", "done")
+        self.flow.repository.set_info("old", ciclo_id="done")
+        cycles.complete("done")
         with self.app.extensions["database"].connect() as connection:
             connection.execute("UPDATE operation_runtime SET lease_until = 0")
         restarted = create_app(self.config)
-        self.assertEqual(restarted.extensions["workflow"].repository.items(), [])
-        self.assertEqual(restarted.extensions["workflow"].repository.recent()[0]["estado"], "FINALIZADO")
+        self.assertEqual(restarted.extensions["workflow"].snapshot()["itens"][0]["estado"], "FINALIZADO")
         self.assertEqual(restarted.extensions["arduino"].command_log, [])
 
-    def test_minimum_json_bootstraps_only_an_empty_database(self):
+    def test_initial_catalog_only_bootstraps_an_empty_database(self):
+        import json
+
         seed = Path(self.directory.name) / "initial.json"
         document = {"version": 1, "aruco_dictionary": "DICT_4X4_250",
                     "products": [{"produto_id": "SEED", "uf": "CE", "ativo": True, "aruco_id": 17}]}
         seed.write_text(json.dumps(document), encoding="utf-8")
-        config = {**self.config, "DATABASE_PATH": Path(self.directory.name) / "fresh.db",
+        config = {**self.config, "DATABASE_PATH": Path(self.directory.name) / "seed.db",
                   "BOOTSTRAP_CATALOG": True, "BOOTSTRAP_CATALOG_PATH": seed}
         initial = create_app(config)
         self.assertEqual(initial.extensions["product_repository"].get("SEED")["aruco_id"], 17)
@@ -187,68 +226,46 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(repeated.extensions["product_repository"].get("SEED")["aruco_id"], 17)
         self.assertIsNotNone(repeated.extensions["product_repository"].get("CUSTOM"))
 
-    def test_real_camera_cannot_receive_injected_identifiers(self):
-        self.app.extensions["camera"].mode = "opencv"
-        self.assertEqual(self.client.post("/api/simulation/camera", json={"produto_id": "FIRST"}).status_code, 403)
-        self.assertEqual(self.client.post("/api/cycles", json={"qr_code": build_product_qr_payload("FIRST")}).status_code, 400)
+    def test_embedded_conveyor_server_runs_with_the_application(self):
+        app = create_app({**self.config, "DATABASE_PATH": Path(self.directory.name) / "embedded.db", "CONVEYOR_MODE": "ev3_simulator", "EV3_SIMULATOR_DELAY": 0.02})
+        flow = app.extensions["workflow"]
+        try:
+            app.extensions["product_repository"].create("FIRST", "CE")
+            flow.start()
+            self.wait_for(lambda: flow.snapshot()["proxima_caixa_liberada"])
+            app.extensions["camera"].enqueue_qr_code(build_product_qr_payload("FIRST"))
+            app.extensions["arduino"].presence.update(True, 5)
+            self.wait_for(lambda: app.extensions["cycle_repository"].count_completed() == 1)
+            self.assertEqual(len(app.extensions["conveyor_server"].motion.codes), 1)
+        finally:
+            flow.shutdown()
+            app.extensions["conveyor_device"].disconnect()
+            app.extensions["stop_conveyor_server"]()
 
-    def test_failed_heartbeat_reports_communication_failure_without_movement(self):
-        self.plan(["FIRST"])
-        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
-        self.hardware.timeout_next("SISTEMA:PING")
-        self.wait_for(lambda: not self.flow.running())
-        info = self.flow.snapshot()["fluxo"]
-        self.assertEqual(info["estado"], "ERRO")
-        self.assertEqual(info["erro"]["codigo"], "HEARTBEAT_FAILED")
-        self.assertNotIn("GARRA:PEGAR", self.commands())
+    def test_application_starts_observer_without_a_dashboard_start_request(self):
+        app = create_app({**self.config, "TESTING": False, "AUTO_OPERATION": True,
+                          "DATABASE_PATH": Path(self.directory.name) / "startup.db", "BOOTSTRAP_CATALOG": False,
+                          "HARDWARE_MODE": "mock", "CONVEYOR_MODE": "mock", "CAMERA_MODE": "mock"})
+        flow = app.extensions["workflow"]
+        try:
+            self.wait_for(lambda: flow.snapshot()["proxima_caixa_liberada"])
+            self.assertTrue(flow.running())
+            self.assertNotIn("GARRA:PEGAR", [parse_message(frame).payload for frame in app.extensions["arduino"].command_log])
+        finally:
+            flow.shutdown()
 
-    def test_real_gripper_requires_calibrated_profiles_before_start(self):
-        self.plan(["FIRST"])
-        self.hardware.mode = "serial"
-        self.assertEqual(self.client.post("/api/flow/start").status_code, 409)
-        self.assertNotIn("GARRA:PEGAR", self.commands())
-
-    def test_claimed_real_hardware_does_not_finish_on_simulated_arrival(self):
-        self.hardware.mode = "serial"
-        controller = self.app.extensions["system_controller"]
-        controller.gripper.calibrated = True
-        controller.require_physical_arrival = True
-        self.plan(["FIRST"])
-        self.scan("FIRST")
-        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
-        self.wait_for(lambda: not self.flow.running())
-        self.assertEqual(self.flow.repository.head()["estado"], "ERRO")
-        self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
-
-    def test_opencv_aruco_frames_drive_the_chosen_queue_without_typed_identifiers(self):
-        import cv2
-        import numpy as np
-        from vision.qrcode import QRCodeCamera, generate_aruco_png
-        self.products.ensure_aruco("FIRST", marker_id=17)
-        self.products.ensure_aruco("SECOND", marker_id=18)
-        first = cv2.imdecode(np.frombuffer(generate_aruco_png(17), dtype=np.uint8), cv2.IMREAD_COLOR)
-        second = cv2.imdecode(np.frombuffer(generate_aruco_png(18), dtype=np.uint8), cv2.IMREAD_COLOR)
-        current_frame = [first]
-        camera = QRCodeCamera(cv2_module=cv2, aruco_resolver=self.products.resolve_aruco,
-                              retry_interval=0.01, duplicate_cooldown=0)
-        camera.capture_frame = lambda: current_frame[0]
-        camera.connect = lambda: True
-        camera.is_connected = lambda: True
-        self.app.extensions["camera"] = camera
-        self.app.extensions["system_controller"].camera = camera
-        self.plan(["SECOND", "FIRST"])
-        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
-        self.wait_for(lambda: self.flow.snapshot()["fluxo"].get("detectado") == "FIRST")
-        self.assertNotIn("GARRA:PEGAR", self.commands())
-        current_frame[0] = second
-        self.wait_for(lambda: self.app.extensions["cycle_repository"].count_completed() == 1)
-        current_frame[0] = np.full_like(first, 255)
-        self.wait_for(lambda: self.flow.snapshot()["fluxo"].get("estado") == "AGUARDANDO_LEITURA" and
-                      self.flow.snapshot()["fluxo"].get("esperado") == "FIRST")
-        current_frame[0] = first
-        self.wait_for(lambda: not self.flow.running())
-        cycles = self.app.extensions["cycle_repository"].list_recent()
-        self.assertEqual([cycle["produto_id"] for cycle in reversed(cycles)], ["SECOND", "FIRST"])
+    def test_clean_idle_restart_automatically_rearms_without_replaying_a_unit(self):
+        self.start()
+        self.flow.shutdown()
+        restarted = create_app(self.config)
+        flow = restarted.extensions["workflow"]
+        try:
+            flow.start()
+            self.wait_for(lambda: flow.snapshot()["proxima_caixa_liberada"])
+            self.assertEqual(flow.snapshot()["itens"], [])
+            self.assertNotIn("GARRA:PEGAR", [parse_message(frame).payload for frame in restarted.extensions["arduino"].command_log])
+        finally:
+            flow.shutdown()
 
 
 if __name__ == "__main__":

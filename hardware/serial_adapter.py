@@ -21,6 +21,7 @@ from hardware.protocol import (
     validate_command,
 )
 from hardware.telemetry import Telemetry
+from hardware.presence import PresenceSensor
 
 
 MAX_SERIAL_FRAME_LENGTH = 512
@@ -61,6 +62,7 @@ class SerialArduino(Arduino):
         self.invalid_frames: deque[str] = deque(maxlen=20)
         self.command_log: list[str] = []
         self.telemetry = Telemetry()
+        self.presence = PresenceSensor()
 
     def connect(self) -> bool:
         with self._lifecycle_lock:
@@ -68,6 +70,7 @@ class SerialArduino(Arduino):
                 return True
             self._close_serial()
             self._reader_error = None
+            self.presence.reset()
             self._stop_reader.clear()
 
             if not self.port:
@@ -279,6 +282,8 @@ class SerialArduino(Arduino):
                 continue
             if not text or len(text) > MAX_SERIAL_FRAME_LENGTH:
                 self.invalid_frames.append(text[:MAX_SERIAL_FRAME_LENGTH])
+                continue
+            if self.presence.ingest(text):
                 continue
             try:
                 message = parse_message(text)

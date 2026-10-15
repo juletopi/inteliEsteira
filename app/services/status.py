@@ -17,11 +17,11 @@ def get_system_status():
     )
     snapshot["ev3_host"] = (
         getattr(conveyor_device, "host", None)
-        if snapshot["esteira_modo"] == "ev3" else None
+        if snapshot["esteira_modo"] in {"ev3", "ev3_simulator"} else None
     )
     snapshot["ev3_porta"] = (
         getattr(conveyor_device, "port", None)
-        if snapshot["esteira_modo"] == "ev3" else None
+        if snapshot["esteira_modo"] in {"ev3", "ev3_simulator"} else None
     )
     camera_mode = getattr(controller.camera, "mode", "desconhecido")
     camera_connected = controller.camera.is_connected()

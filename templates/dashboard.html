@@ -65,6 +65,7 @@
 
     .control-row {
         display: flex;
+        flex-direction: column;
         gap: 18px;
         align-items: stretch;
     }
@@ -122,13 +123,14 @@
     }
 
     .camera-placeholder {
+        position: relative;
         display: flex;
-        min-height: 94px;
-        flex: 1;
+        width: 100%;
+        aspect-ratio: 16 / 9;
         align-items: center;
         justify-content: center;
         gap: 10px;
-        border-radius: 10px;
+        border-radius: 6px;
         background: #eef3f1;
         color: var(--muted);
         font-size: 0.75rem;
@@ -141,10 +143,32 @@
     }
 
     .camera-image {
+        position: absolute;
+        inset: 0;
         width: 100%;
-        min-height: 94px;
-        max-height: 180px;
-        object-fit: cover;
+        height: 100%;
+        object-fit: contain;
+        background: #101617;
+    }
+
+    .camera-expand-button {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border: 1px solid #768189;
+        border-radius: 4px;
+        background: #101617;
+        color: #fff;
+    }
+
+    .camera-placeholder:fullscreen {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        background: #101617;
     }
 
     .camera-placeholder-content {
@@ -152,6 +176,10 @@
         align-items: center;
         gap: 10px;
         padding: 18px;
+    }
+
+    .automatic-queue-table {
+        min-width: 560px;
     }
 
     .operation-feedback {
@@ -300,6 +328,10 @@
                     <span>Webcam</span>
                     <span id="camera-status" class="badge-status badge-offline">Desconectado</span>
                 </div>
+                <div class="device-status">
+                    <span>HC-SR04</span>
+                    <span id="presence-status" class="badge-status badge-offline">Aguardando sensor</span>
+                </div>
                 <div id="system-alert" class="alert alert-warning mt-4 mb-0 d-none">
                     <i class="bi bi-exclamation-triangle-fill"></i>
                     <span>
@@ -323,37 +355,17 @@
                 </div>
 
                 <div class="surface-panel production-details">
-                    <div class="row g-2 mb-3" aria-label="Planejar sequência de produtos">
-                        <div class="col-md-7">
-                            <label class="form-label" for="queue-product">Produto cadastrado</label>
-                            <select id="queue-product" class="form-select"><option value="">Carregando produtos...</option></select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label" for="queue-quantity">Unidades</label>
-                            <input id="queue-quantity" class="form-control" type="number" min="1" max="100" step="1" value="1">
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button id="add-queue-button" class="btn btn-primary w-100" type="button">Adicionar à fila</button>
-                        </div>
+                    <div class="panel-title">
+                        <h2>Fila automática</h2>
+                        <span id="queue-count" class="small text-secondary">0 unidades</span>
                     </div>
-                    <p class="small text-secondary">A ordem abaixo é obrigatória. A câmera lê a etiqueta na área de coleta P01;
-                        a garra só recebe autorização para o produto esperado e entrega na posição E01 da esteira.</p>
-                    <div id="queue-notice" class="alert alert-info py-2" role="status" aria-live="polite">Planeje a fila e inicie o fluxo.</div>
+                    <div id="queue-notice" class="alert alert-info py-2" role="status" aria-live="polite">Aguardando conexão dos dispositivos.</div>
                     <div class="table-responsive mb-3">
-                        <table class="table table-sm align-middle">
-                            <thead><tr><th>Ordem</th><th>Produto</th><th>Estado</th><th>Ação</th></tr></thead>
-                            <tbody id="queue-table-body"><tr><td colspan="4">Fila vazia.</td></tr></tbody>
+                        <table class="table table-sm align-middle automatic-queue-table">
+                            <thead><tr><th>Unidade</th><th>Produto</th><th>Região</th><th>Destino</th><th>Estado</th></tr></thead>
+                            <tbody id="queue-table-body"><tr><td colspan="5">Nenhum cubo identificado.</td></tr></tbody>
                         </table>
                     </div>
-                    <div id="simulation-input" class="border rounded p-3 mb-3 d-none">
-                        <label class="form-label" for="simulation-product">Câmera simulada: etiqueta para apresentar</label>
-                        <div class="d-flex gap-2">
-                            <select id="simulation-product" class="form-select"></select>
-                            <button id="simulate-read-button" class="btn btn-outline-secondary text-nowrap" type="button">Simular leitura</button>
-                        </div>
-                        <p class="small text-secondary mb-0 mt-2">Somente no modo de teste. Com webcam real, a identificação vem da imagem.</p>
-                    </div>
-                    <p id="arrival-confirmation" class="small text-secondary">A confirmação de chegada aparecerá após o transporte.</p>
                     <div class="current-cycle" aria-label="Dados do ciclo atual">
                         <div class="cycle-field">
                             <span>Produto</span>
@@ -377,56 +389,18 @@
 
             <article id="webcam" class="surface-panel mt-3">
                 <div class="control-row">
-                    <div class="control-actions">
-                        <button
-                            type="button"
-                            id="check-button"
-                            class="btn btn-light">
-                            <i class="bi bi-check2-circle"></i>Testar comunicação
-                        </button>
-
-                        <button
-                            type="button"
-                            id="start-button"
-                            class="btn btn-primary">
-                            <i class="bi bi-play-fill"></i>Iniciar fluxo
-                        </button>
-
-                        <button
-                            type="button"
-                            id="stop-button"
-                            class="btn btn-outline-secondary">
-                            <i class="bi bi-stop-fill"></i>Stop
-                        </button>
-
-                        <button
-                            type="button"
-                            id="reset-button"
-                            class="btn btn-outline-secondary">
-                            <i class="bi bi-arrow-counterclockwise"></i>Reset
-                        </button>
-                    </div>
                     <div id="camera-preview" class="camera-placeholder">
                         <img id="camera-image" class="camera-image d-none" alt="Preview da webcam">
                         <div id="camera-placeholder-content" class="camera-placeholder-content">
                             <i class="bi bi-camera-video-fill"></i>
                             <span>Webcam simulada</span>
                         </div>
+                        <button type="button" id="camera-expand-button" class="camera-expand-button d-none"
+                                title="Expandir preview" aria-label="Expandir preview">
+                            <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+                        </button>
                     </div>
                 </div>
-                <div id="operation-feedback" class="operation-feedback" role="status" aria-live="polite">
-                    Selecione produtos para a fila. A câmera identifica o produto antes de qualquer coleta.
-                </div>
-                <details class="mt-3">
-                    <summary>Mensagens e confirmações dos dispositivos</summary>
-                    <div id="communication-summary" class="small my-2"></div>
-                    <div class="table-responsive">
-                        <table class="table table-sm small">
-                            <thead><tr><th>Dispositivo</th><th>Direção</th><th>Tipo</th><th>Ciclo</th><th>Mensagem</th></tr></thead>
-                            <tbody id="communication-table-body"></tbody>
-                        </table>
-                    </div>
-                </details>
             </article>
         </div>
     </section>
@@ -438,13 +412,13 @@
 <script>
     let currentCameraMode = "opencv";
     let currentCameraConnected = false;
-    let flowActive = false;
-    let actionPending = false;
-    let queueItems = [];
     let refreshing = false;
+    let previewLoading = false;
+    let previewTimeout = null;
 
-    function setFeedback(message, type = "neutral") {
-        $("#operation-feedback").removeClass("success error").addClass(type === "neutral" ? "" : type).text(message);
+    function setFeedback(message) {
+        $("#system-alert").removeClass("d-none");
+        $("#system-alert-message").text(message);
     }
 
     async function apiRequest(url, options = {}) {
@@ -454,63 +428,67 @@
         return data;
     }
 
-    function setControls() {
-        $("#start-button").prop("disabled", actionPending || flowActive || !queueItems.length);
-        $("#check-button, #reset-button, #add-queue-button, #queue-product, #queue-quantity")
-            .prop("disabled", actionPending || flowActive);
-    }
+    const labels = {INICIANDO: "Conectando dispositivos", AGUARDANDO_CONEXAO: "Aguardando conexão",
+            AGUARDANDO_SENSOR: "Aguardando cubo", COLETANDO: "Coletando cubo",
+            AGUARDANDO_OBJETO: "Presença confirmada", PEGANDO_OBJETO: "Coletando cubo",
+            POSICIONANDO_OBJETO: "Posicionando na esteira", SOLTANDO_OBJETO: "Depositando na esteira",
+            OBJETO_POSICIONADO: "Cubo na esteira", LENDO_QR: "Identificando ArUco",
+            VALIDANDO_QR: "Validando cadastro", DESTINO_DEFINIDO: "Destino definido",
+            TRANSPORTANDO: "Em transporte", FINALIZADO: "Concluída", ERRO: "Erro",
+            INTERROMPIDO: "Interrompida", PARADO: "Parado"};
 
     function renderQueue(snapshot) {
-        flowActive = Boolean(snapshot.fluxo?.ativo);
-        queueItems = snapshot.itens || [];
+        const queueItems = snapshot.itens || [];
         const $body = $("#queue-table-body").empty();
-        if (!queueItems.length) $body.append($("<tr>").append($("<td>", {colspan: 4}).text("Fila vazia. Escolha um produto cadastrado.")));
+        $("#queue-count").text(`${queueItems.length} unidade${queueItems.length === 1 ? "" : "s"}`);
+        if (!queueItems.length) $body.append($("<tr>").append($("<td>", {colspan: 5}).text("Nenhum cubo identificado.")));
         queueItems.forEach((item, index) => {
-            const $actions = $("<div>", {class: "d-flex gap-1"});
-            $actions.append($("<button>", {type: "button", class: "btn btn-sm btn-outline-secondary", text: "Cancelar", disabled: flowActive})
-                .on("click", () => changeQueueItem(item.id, "cancel")));
-            if (item.estado === "ERRO" || item.estado === "INTERROMPIDO") {
-                $actions.append($("<button>", {type: "button", class: "btn btn-sm btn-outline-warning", text: "Tentar novamente", disabled: flowActive})
-                    .on("click", () => changeQueueItem(item.id, "retry")));
-            }
+            const phase = item.estado === "PROCESSANDO" ?
+                (snapshot.fluxo?.ciclo_id === item.ciclo_id ? snapshot.fluxo.estado : item.etapa) : item.estado;
             $body.append($("<tr>").append($("<td>").text(index + 1), $("<td>").text(item.produto_id),
-                $("<td>").text(item.estado).attr("title", item.erro?.mensagem || ""), $("<td>").append($actions)));
+                $("<td>").text((item.macroregiao || "—").replace("_", "-")), $("<td>").text(item.destino || "—"),
+                $("<td>").text(labels[phase] || phase).attr("title", item.erro?.mensagem || "")));
         });
         const flow = snapshot.fluxo || {};
-        const parts = [flow.estado || "PRONTO"];
-        if (flow.esperado) parts.push(`Esperado: ${flow.esperado}`);
-        if (flow.detectado) parts.push(`Última leitura: ${flow.detectado}`);
+        const parts = [labels[flow.estado] || flow.estado || "Aguardando conexão"];
+        if (snapshot.proxima_caixa_liberada) parts.push("Próxima caixa liberada");
         if (flow.aviso) parts.push(flow.aviso);
         if (flow.erro) parts.push(flow.erro.mensagem);
         $("#queue-notice").text(parts.join(" | "));
-        setControls();
     }
 
-    async function loadProducts() {
-        const data = await apiRequest("{{ url_for('api.list_products') }}");
-        for (const selector of ["#queue-product", "#simulation-product"]) {
-            const previous = $(selector).val();
-            const $select = $(selector).empty().append($("<option>", {value: ""}).text("Selecione um produto"));
-            data.produtos.filter(product => product.ativo).forEach(product => {
-                $select.append($("<option>", {value: product.id}).text(`${product.id} - ${product.uf} - ${product.macroregiao.replace("_", "-")}`));
-            });
-            if (previous) $select.val(previous);
-        }
+    function releasePreviewRequest() {
+        window.clearTimeout(previewTimeout);
+        previewTimeout = null;
+        previewLoading = false;
     }
 
     function updateCameraPanel() {
         const real = currentCameraMode === "opencv";
-        $("#simulation-input").toggleClass("d-none", real);
         const $image = $("#camera-image");
         const $placeholder = $("#camera-placeholder-content");
+        const $expand = $("#camera-expand-button");
         if (!real || !currentCameraConnected) {
-            $image.addClass("d-none").removeAttr("src");
+            releasePreviewRequest();
+            $image.off("load.preview error.preview").addClass("d-none").removeAttr("src");
+            $expand.addClass("d-none");
             $placeholder.removeClass("d-none").find("span").text(real ? "Webcam indisponível" : "Câmera simulada (teste)");
             return;
         }
+        $expand.toggleClass("d-none", !document.fullscreenEnabled);
+        // Aguarda o frame em curso para nao cancelar capturas mais lentas que o polling.
+        if (previewLoading) return;
+        previewLoading = true;
+        previewTimeout = window.setTimeout(() => {
+            $image.off("load.preview error.preview").addClass("d-none").removeAttr("src");
+            $placeholder.removeClass("d-none").find("span").text("Preview indisponível");
+            releasePreviewRequest();
+        }, 10000);
         $image.off("load.preview error.preview").one("load.preview", () => {
+            releasePreviewRequest();
             $image.removeClass("d-none"); $placeholder.addClass("d-none");
         }).one("error.preview", () => {
+            releasePreviewRequest();
             $image.addClass("d-none"); $placeholder.removeClass("d-none").find("span").text("Preview indisponível");
         }).attr("src", `{{ url_for('api.camera_frame') }}?t=${Date.now()}`);
     }
@@ -523,16 +501,24 @@
             currentCameraMode = data.camera_modo;
             currentCameraConnected = Boolean(data.camera);
             renderQueue(data.fila);
+            const sensor = data.fila.sensor || {};
+            $("#presence-status").toggleClass("badge-offline", sensor.presente === null || sensor.presente === undefined)
+                .text(sensor.presente === true ? `Cubo detectado · ${sensor.distancia_cm} cm` :
+                    sensor.presente === false ? "Área livre" : "Aguardando sensor");
             for (const [selector, connected, mode, state] of [
                 ["#gripper-status", data.arduino, data.hardware_modo, data.garra],
                 ["#conveyor-status", data.esteira_conectada, data.esteira_modo, data.esteira]]) {
                 $(selector).toggleClass("badge-offline", !connected).text(!connected ? "Desconectado" :
-                    `${mode === "mock" || mode === "simulator" ? "Simulado" : "Conectado"} - ${state}`);
+                    `${["mock", "simulator", "ev3_simulator"].includes(mode) ? "Simulado" : "Conectado"} - ${state}`);
             }
-            $("#camera-status").toggleClass("badge-offline", !data.camera).text(data.camera ? (currentCameraMode === "mock" ? "Simulada" : "Conectada") : "Desconectada");
+            const resolution = data.camera_resolucao;
+            const cameraLabel = currentCameraMode === "mock" ? "Simulada" :
+                resolution ? `${resolution.largura} × ${resolution.altura}` : "Conectada";
+            $("#camera-status").toggleClass("badge-offline", !data.camera).text(data.camera ? cameraLabel : "Desconectada");
             $("#connected-components").text(Number(data.arduino) + Number(data.esteira_conectada) + Number(data.camera));
             $("#packages-count").text(data.total_ciclos || 0);
-            $("#system-state-metric").text(data.fila.fluxo.ativo && data.fila.fluxo.estado !== "PROCESSANDO" ? data.fila.fluxo.estado : data.estado);
+            const phase = data.fila.fluxo.ativo ? data.fila.fluxo.estado : data.estado;
+            $("#system-state-metric").text(labels[phase] || phase.replaceAll("_", " "));
             $("#current-product").text(data.produto || "—");
             $("#current-state").text(data.uf || "—");
             $("#current-macroregion").text(data.macroregiao || "—");
@@ -540,74 +526,26 @@
             const error = data.erro || data.fila.fluxo.erro;
             $("#system-alert").toggleClass("d-none", !error);
             if (error) $("#system-alert-message").text(error.mensagem);
-            $("#arrival-confirmation").text(`Confirmação de chegada: ${data.chegada_confirmacao || "aguardando"}. ${data.chegada_fisica ? "Sensor informado pelo controlador." : "Sem comprovação física de chegada."}`);
             updateCameraPanel();
         } finally { refreshing = false; }
     }
 
-    async function updateDiagnostics() {
-        const data = await apiRequest("{{ url_for('api.operational_diagnostics') }}");
-        $("#communication-summary").text(data.dispositivos.map(device =>
-            `${device.nome}: ${device.modo}; ${device.conectado ? "conectado" : "desconectado"}; PING ${device.ping_em || "não confirmado"}`).join(" | "));
-        const $body = $("#communication-table-body").empty();
-        data.dispositivos.forEach(device => device.mensagens.slice(-12).forEach(frame => {
-            $body.append($("<tr>").append($("<td>").text(device.nome), $("<td>").text(frame.direcao),
-                $("<td>").text(frame.tipo), $("<td>").text(frame.ciclo_id), $("<td>").text(frame.mensagem)));
-        }));
-    }
-
-    async function changeQueueItem(id, action) {
-        if (action === "retry" && !window.confirm("Inspecione a operação interrompida, retire a etiqueta da imagem e reposicione a unidade na área P01. Deseja reenfileirar para uma nova tentativa?")) return;
-        try {
-            const suffix = action === "retry" ? "/retry" : "";
-            const data = await apiRequest(`{{ url_for('api.operation_queue') }}/${id}${suffix}`, {method: action === "retry" ? "POST" : "DELETE"});
-            renderQueue(data);
-            setFeedback(action === "retry" ? "Item reenfileirado. Resete o sistema e inicie quando a montagem estiver pronta." : "Item cancelado.", "success");
-        } catch (error) { setFeedback(error.message, "error"); }
-    }
-
-    async function controlRequest(url, message) {
-        actionPending = true; setControls();
-        try {
-            const data = await apiRequest(url, {method: "POST"});
-            if (data.fluxo) renderQueue(data);
-            setFeedback(message, "success");
-        } catch (error) { setFeedback(error.message, "error"); }
-        finally { actionPending = false; await updateStatus().catch(() => {}); setControls(); }
-    }
-
     $(function () {
-        loadProducts().catch(error => setFeedback(error.message, "error"));
+        $("#camera-expand-button").on("click", async function () {
+            const preview = document.getElementById("camera-preview");
+            try {
+                if (document.fullscreenElement === preview) await document.exitFullscreen();
+                else await preview.requestFullscreen();
+            } catch (error) { setFeedback(error.message, "error"); }
+        });
+        document.addEventListener("fullscreenchange", function () {
+            const expanded = document.fullscreenElement === document.getElementById("camera-preview");
+            const label = expanded ? "Sair da tela cheia" : "Expandir preview";
+            $("#camera-expand-button").attr({title: label, "aria-label": label})
+                .find("i").toggleClass("bi-arrows-fullscreen", !expanded).toggleClass("bi-fullscreen-exit", expanded);
+        });
         updateStatus().catch(error => setFeedback(error.message, "error"));
-        updateDiagnostics().catch(() => {});
-        $("#add-queue-button").on("click", async function () {
-            const product = $("#queue-product").val();
-            const quantity = Number($("#queue-quantity").val());
-            if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
-                setFeedback("Escolha um produto cadastrado e de 1 a 100 unidades.", "error"); return;
-            }
-            actionPending = true; setControls();
-            try {
-                const data = await apiRequest("{{ url_for('api.enqueue_products') }}", {method: "POST", headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({produto_ids: Array(quantity).fill(product)})});
-                renderQueue(data); setFeedback("Unidades adicionadas na ordem da fila.", "success");
-            } catch (error) { setFeedback(error.message, "error"); }
-            finally { actionPending = false; setControls(); }
-        });
-        $("#simulate-read-button").on("click", async function () {
-            try {
-                const product = $("#simulation-product").val();
-                if (!product) throw new Error("Escolha a etiqueta a simular.");
-                await apiRequest("{{ url_for('api.simulate_camera_read') }}", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({produto_id: product})});
-                setFeedback(`Leitura simulada enviada: ${product}.`, "success");
-            } catch (error) { setFeedback(error.message, "error"); }
-        });
-        $("#check-button").on("click", () => controlRequest("{{ url_for('api.connect_system') }}", "Comunicação verificada por PING/ACK. Consulte as mensagens dos dispositivos."));
-        $("#start-button").on("click", () => controlRequest("{{ url_for('api.start_flow') }}", "Fluxo iniciado. Apresente o produto esperado à câmera na área P01."));
-        $("#stop-button").on("click", () => controlRequest("{{ url_for('api.stop_system') }}", "Parada solicitada. Inspecione o produto antes de retomar."));
-        $("#reset-button").on("click", () => controlRequest("{{ url_for('api.reset_system') }}", "Estado lógico resetado. Itens interrompidos precisam de cancelamento ou nova tentativa explícita."));
         window.setInterval(() => updateStatus().catch(() => {}), 700);
-        window.setInterval(() => updateDiagnostics().catch(() => {}), 1500);
     });
 </script>
 {% endblock %}
