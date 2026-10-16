@@ -17,7 +17,7 @@ from core.controller import ControllerError, CycleProcessingError, SystemBusyErr
 from hardware.arduino import ArduinoError
 from hardware.serial_adapter import list_serial_ports
 from storage.queue import QueueError
-from vision.qrcode import build_product_qr_payload
+from vision.aruco import build_product_payload
 from storage.repositories import (
     ArucoMarkerConflictError,
     ArucoMarkersExhaustedError,
@@ -25,7 +25,10 @@ from storage.repositories import (
     ProductNotRegisteredError,
 )
 from vision.labels import generate_aruco_batch_pdf, generate_aruco_pdf
-from vision.qrcode import ARUCO_PRINT_SIZES_MM, CameraError, generate_aruco_png, generate_product_qr_png
+from vision.aruco import (
+    ARUCO_PRINT_SIZES_MM, ArucoNotRegisteredError, CameraError,
+    ArucoNotFoundError, generate_aruco_png,
+)
 
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -38,7 +41,7 @@ def status():
 
 @api_bp.post("/route")
 def resolve_route():
-    """Valida um QR Code e devolve a regiao fisica selecionada."""
+    """Valida o payload interno do produto e devolve a regiao selecionada."""
 
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
@@ -215,31 +218,7 @@ def delete_product(product_id):
 
 @api_bp.get("/products/<product_id>/qrcode")
 def product_qrcode(product_id):
-    """Entrega o QR canonico de um produto cadastrado em formato PNG."""
-
-    product = current_app.extensions["product_repository"].get(
-        product_id,
-        include_inactive=True,
-    )
-    if product is None:
-        return _error_response("PRODUCT_NOT_FOUND", "Produto nao encontrado.", 404)
-
-    try:
-        png = generate_product_qr_png(product["id"])
-    except CameraError as exc:
-        return _error_response(exc.code, exc.message, 503)
-
-    safe_product_id = re.sub(r"[^A-Za-z0-9._-]+", "_", product["id"])
-    as_attachment = request.args.get("download", "").lower() in {"1", "true", "sim"}
-    response = send_file(
-        BytesIO(png),
-        mimetype="image/png",
-        download_name=f"qr-{safe_product_id}.png",
-        as_attachment=as_attachment,
-        max_age=0,
-    )
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return _error_response("QR_CODE_REMOVED", "QR Code desativado. Utilize a etiqueta ArUco do produto.", 410)
 
 
 @api_bp.post("/products/<product_id>/aruco")
@@ -376,6 +355,31 @@ def camera_frame():
     return response
 
 
+@api_bp.post("/camera/identify")
+def identify_camera_frame():
+    """Diagnostico de um frame, sem iniciar fila, garra ou esteira."""
+    if current_app.extensions["workflow"].running():
+        return _error_response("SYSTEM_BUSY", "Pare o fluxo automatico antes de testar a camera.", 409)
+    controller = current_app.extensions["system_controller"]
+    if getattr(controller.camera, "mode", None) != "opencv":
+        return _error_response("CAMERA_PREVIEW_UNAVAILABLE", "O diagnostico exige camera real no modo opencv.", 409)
+    try:
+        decision = current_app.extensions["camera_monitor"].observe_once()
+    except SystemBusyError as exc:
+        return _error_response(exc.code, exc.message, 409)
+    except (ArucoNotFoundError, ArucoNotRegisteredError) as exc:
+        return _error_response(exc.code, exc.message, 422)
+    except CameraError as exc:
+        return _error_response(exc.code, exc.message, 503)
+    except ProductNotFoundError as exc:
+        return _error_response(exc.code, exc.message, 404)
+    except DestinationUnavailableError as exc:
+        return _error_response(exc.code, exc.message, 409)
+    except ClassificationError as exc:
+        return _error_response(exc.code, exc.message, 422)
+    return jsonify({"ok": True, "diagnostico": True, **decision.as_dict()})
+
+
 @api_bp.post("/system/stop")
 def stop_system():
     return jsonify({"ok": True, "sistema": current_app.extensions["workflow"].stop()})
@@ -459,7 +463,7 @@ def simulate_camera_read():
         product_id = validate_product_id(payload.get("produto_id") if isinstance(payload, dict) else None)
     except ClassificationError as exc:
         return _error_response(exc.code, exc.message, 400)
-    camera.enqueue_qr_code(build_product_qr_payload(product_id))
+    camera.enqueue_qr_code(build_product_payload(product_id))
     return jsonify({"ok": True})
 
 

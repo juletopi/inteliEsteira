@@ -315,7 +315,7 @@ class CycleRepository:
     def get(self, cycle_id: str, *, include_events: bool = False) -> dict | None:
         with self.database.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM cycles WHERE cycle_id = ?",
+                self._projection() + " WHERE c.cycle_id = ?",
                 (cycle_id,),
             ).fetchone()
             if row is None:
@@ -345,7 +345,7 @@ class CycleRepository:
         safe_limit = max(1, min(int(limit), 500))
         with self.database.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM cycles ORDER BY started_at DESC LIMIT ?",
+                self._projection() + " ORDER BY c.started_at DESC LIMIT ?",
                 (safe_limit,),
             ).fetchall()
         return [self._serialize(row) for row in rows]
@@ -366,6 +366,16 @@ class CycleRepository:
         return {row["destination"]: row["total"] for row in rows if row["destination"]}
 
     @staticmethod
+    def _projection():
+        return (
+            "SELECT c.*, (SELECT MIN(e.created_at) FROM cycle_events e WHERE e.cycle_id = c.cycle_id "
+            "AND e.event_type = 'GARRA_RETORNOU') AS arm_finished_at, "
+            "(SELECT m.marker_id FROM aruco_markers m WHERE m.product_id = c.product_id) AS aruco_id, "
+            "(SELECT json_extract(e.payload, '$.simulado') FROM cycle_events e WHERE e.cycle_id = c.cycle_id "
+            "AND e.event_type = 'MODO_OPERACAO' LIMIT 1) AS simulated FROM cycles c"
+        )
+
+    @staticmethod
     def _serialize(row) -> dict:
         return {
             "id": row["cycle_id"],
@@ -375,6 +385,11 @@ class CycleRepository:
             "destino": row["destination"],
             "estado": row["status"],
             "qr_code": row["qr_code"],
+            "aruco_id": row["aruco_id"],
+            "braco_concluido": row["arm_finished_at"] is not None,
+            "braco_finalizado_em": row["arm_finished_at"],
+            "transporte_estado": row["status"] if row["status"] in {"FINALIZADO", "TRANSPORTANDO", "ERRO", "PARADO"} else "AGUARDANDO",
+            "simulado": bool(row["simulated"]) if row["simulated"] is not None else None,
             "erro": (
                 {
                     "codigo": row["error_code"],

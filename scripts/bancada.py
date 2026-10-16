@@ -56,6 +56,7 @@ def virtual_bench(database, *, camera="mock", arduino_options=None, catalog=None
         yield app, arduino, ev3
     finally:
         if app is not None:
+            app.extensions["camera_monitor"].shutdown()
             app.extensions["workflow"].shutdown()
             for key in ("arduino", "conveyor_device", "camera"):
                 app.extensions[key].disconnect()

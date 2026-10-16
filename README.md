@@ -45,7 +45,7 @@ Flask
 Controller
   ├── serial -> Arduino -> Garra
   ├── TCP/IP -> LEGO EV3 -> Esteira e separador
-  └── OpenCV -> Webcam -> QR Code
+  └── OpenCV -> Webcam -> ArUco
 ```
 
 ### Funcionalidades
@@ -57,18 +57,18 @@ Controller
   atividade, exclusões e IDs ArUco. SQLite local mantém fila e histórico.
 - Interface web de monitoramento e controle da linha de produção:
    - **Dashboard** responsivo conectado ao backend simulado.
-   - Controles para planejar a sequência, verificar comunicação, iniciar fluxo,
-     parar e resetar o sistema.
+   - Fila automática por identificação, sem planejamento manual de unidades.
+   - Cards por cubo, com check do braço e estado da esteira separados.
    - Indicadores em tempo real de estado, componentes e último destino.
    - **Linha de produção** com histórico persistente de produtos processados.
    - **Produtos** para cadastrar identificadores, UFs e ativar/desativar itens.
-   - Geração de etiquetas QR em PNG para cada produto cadastrado.
+   - Geração de etiquetas ArUco em PNG e PDF com medidas físicas.
    - **Conexão** com diagnóstico, reconexão e listagem das portas seriais.
 - Estrutura de comunicação serial:
    - Camada `core` para estado, classificação e coordenação do sistema.
    - Camada `hardware` para comunicação serial, garra e esteira.
    - Adaptador real com pyserial, leitura em segundo plano, timeout e repetição.
-   - Camada `vision` para captura de imagens e leitura de QR Code.
+   - Camada `vision` para captura de imagens e leitura exclusiva de ArUco.
    - Leitura contínua pela webcam com OpenCV, preview e bloqueio de duplicatas.
 - Integração da esteira LEGO EV3:
    - Ponte TCP no EV3 com autenticação, ACK e evento de conclusão por ciclo.
@@ -76,13 +76,18 @@ Controller
    - Parada durante o movimento, watchdog de comunicação e proteção de reenvios.
    - Simulador TCP para testar a mesma integração sem motores conectados.
 - Roteamento inicial de produtos:
-   - Validação de QR Codes JSON contendo somente o identificador do produto.
-   - Consulta da UF em um cadastro persistente, sem confiar o destino ao QR.
+   - ID ArUco vinculado ao produto no cadastro persistente.
+   - Consulta da UF no backend, sem confiar o destino à etiqueta.
    - Conversão das 27 UFs para as cinco macrorregiões brasileiras.
    - Distribuição entre dez destinos físicos, de `R01` a `R10`.
    - Escolha do destino disponível com menor ocupação.
 
-### Contrato do QR Code
+### Contrato de identificação ArUco
+
+A câmera usa exclusivamente `DICT_4X4_250`. O ID numérico da etiqueta resolve
+o produto cadastrado. O JSON abaixo é apenas o payload interno desse produto;
+não é necessário imprimir nem apresentar um QR Code. Nomes legados `qr_code`
+no banco e em contratos internos foram preservados para não apagar o histórico.
 
 ```json
 {
@@ -113,17 +118,7 @@ Content-Type: application/json
 }
 ```
 
-Gere a etiqueta correspondente pela tela **Produtos** ou pela API:
-
-```http
-GET /api/products/PROD-0087/qrcode
-GET /api/products/PROD-0087/qrcode?download=1
-```
-
-O PNG sempre codifica o JSON canônico `{"produto_id":"PROD-0087"}`. A UF não
-fica na etiqueta: ela continua protegida no cadastro do backend.
-
-Para usar ArUco, clique em **Baixar ArUco** na tela **Produtos**. O aplicativo
+Clique em **Baixar ArUco** na tela **Produtos**. O aplicativo
 atribui um ID fixo ao produto e baixa a etiqueta no formato escolhido. Pela API, o mesmo fluxo é:
 
 ```http
@@ -267,8 +262,8 @@ IDLE
   -> POSICIONANDO_OBJETO
   -> SOLTANDO_OBJETO
   -> OBJETO_POSICIONADO
-  -> LENDO_QR
-  -> VALIDANDO_QR
+  -> LENDO_ARUCO
+  -> VALIDANDO_ARUCO
   -> DESTINO_DEFINIDO
   -> TRANSPORTANDO
   -> FINALIZADO
@@ -456,8 +451,9 @@ Referência: [motores Pybricks 2.x](https://docs.pybricks.com/en/v2.0/ev3devices
    `token.txt` está ignorado pelo Git e nunca deve ser commitado. Para gerar
    uma chave no seu terminal: `python -c "import secrets; print(secrets.token_hex(16))"`.
 3. No terminal SSH do EV3, a partir dessa pasta, execute
-   `pybricks-micropython server.py`. A ponte escuta na porta TCP 8765.
-   Opcionalmente, restrinja o IP de escuta: `pybricks-micropython server.py <IP_DO_EV3> 8765`.
+   `brickrun -r -- pybricks-micropython server.py`. A ponte escuta na porta TCP 8765.
+   O `brickrun` prepara o console do Pybricks para evitar falha de inicialização gráfica via SSH.
+   Opcionalmente, restrinja o IP: `brickrun -r -- pybricks-micropython server.py <IP_DO_EV3> 8765`.
 4. Depois de implementar e testar os perfis da garra e instalar os sensores de
    chegada no Arduino, configure e inicie o backend no PowerShell. O
    [guia de teste integrado](docs/teste-integrado.md) também oferece um script
@@ -628,8 +624,8 @@ GET /api/cycles/<ciclo_id>
 	<img src="https://img.shields.io/badge/Flask-3.x-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask-badge">
 </a>
 
-O backend também usa **OpenCV** para captura/detecção e **qrcode + Pillow** para
-gerar as etiquetas PNG.
+O backend usa **OpenCV** para captura/detecção e geração de ArUco, **Pillow**
+para metadados de impressão e **ReportLab** para etiquetas PDF.
 
 #### Hardware e embarcados
 
@@ -690,14 +686,14 @@ inteliEsteira/
 ├── vision/
 │   ├── __init__.py
 │   ├── mock.py
-│   └── qrcode.py
+│   └── aruco.py
 ├── tests/
 │   ├── test_api.py
 │   ├── test_classifier.py
 │   ├── test_controller.py
 │   ├── test_ev3.py
 │   ├── test_protocol.py
-│   ├── test_qrcode.py
+│   ├── test_aruco.py
 │   ├── test_serial_adapter.py
 │   └── test_storage.py
 ├── .gitignore

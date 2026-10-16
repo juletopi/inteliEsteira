@@ -13,7 +13,7 @@ from hardware.mock import MockArduino
 from hardware.protocol import parse_message
 from storage.database import Database
 from storage.repositories import CycleRepository, ProductRepository
-from vision.mock import MockQRCodeCamera
+from vision.mock import MockArucoCamera
 
 
 class ControllerTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class ControllerTests(unittest.TestCase):
         self.cycles = CycleRepository(database)
         self.arduino = MockArduino()
         self.arduino.connect()
-        self.camera = MockQRCodeCamera()
+        self.camera = MockArucoCamera()
         self.controller = SystemController(
             state=SystemState(),
             gripper=Gripper(self.arduino),
@@ -80,8 +80,8 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(stored_cycle["produto_id"], "PROD-1")
         self.assertGreaterEqual(len(stored_cycle["eventos"]), 8)
         events = [event["tipo"] for event in stored_cycle["eventos"]]
-        self.assertLess(events.index("OBJETO_ENTREGUE_NA_ESTEIRA"), events.index("QR_LIDO"))
-        self.assertLess(events.index("QR_LIDO"), events.index("DESTINO_DEFINIDO"))
+        self.assertLess(events.index("OBJETO_ENTREGUE_NA_ESTEIRA"), events.index("ARUCO_LIDO"))
+        self.assertLess(events.index("ARUCO_LIDO"), events.index("DESTINO_DEFINIDO"))
         self.assertLess(events.index("OBJETO_ENTREGUE_NA_ESTEIRA"), events.index("ESTEIRA_INICIADA"))
 
     def test_retries_command_after_timeout(self):
@@ -116,7 +116,7 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(CycleProcessingError) as context:
             self.controller.process_next_product()
 
-        self.assertEqual(context.exception.code, "QR_CODE_NOT_FOUND")
+        self.assertEqual(context.exception.code, "ARUCO_NOT_FOUND")
         self.assertEqual(self.controller.state.snapshot()["estado"], "ERRO")
 
     def test_reconnects_camera_before_starting_cycle(self):

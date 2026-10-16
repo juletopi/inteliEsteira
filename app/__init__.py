@@ -40,6 +40,9 @@ def create_app(test_config=None):
         except (ValueError, RuntimeError) as exc:
             app.logger.warning("Operacao automatica aguarda recuperacao: %s", exc)
 
+    if not app.config.get("TESTING"):
+        app.extensions["camera_monitor"].start()
+
     return app
 
 
@@ -59,8 +62,8 @@ def _configure_controller(app):
     from storage.automatic_catalog import AutomaticCatalog
     from storage.database import Database
     from storage.repositories import CycleRepository, ProductRepository
-    from vision.mock import MockQRCodeCamera
-    from vision.qrcode import QRCodeCamera
+    from vision.mock import MockArucoCamera
+    from vision.aruco import ArucoCamera
 
     database = Database(app.config["DATABASE_PATH"])
     database.initialize()
@@ -152,9 +155,9 @@ def _configure_controller(app):
         )
     camera_mode = str(app.config.get("CAMERA_MODE", "mock")).strip().lower()
     if camera_mode == "mock":
-        camera = MockQRCodeCamera()
+        camera = MockArucoCamera()
     elif camera_mode == "opencv":
-        camera = QRCodeCamera(
+        camera = ArucoCamera(
             app.config.get("CAMERA_INDEX", 0),
             width=app.config.get("CAMERA_WIDTH", 1280),
             height=app.config.get("CAMERA_HEIGHT", 720),
@@ -196,3 +199,8 @@ def _configure_controller(app):
                         presence_stable_ms=app.config.get("PRESENCE_STABLE_MS", 3000))
     app.extensions["workflow"] = workflow
     atexit.register(workflow.shutdown)
+    from app.services.camera_monitor import CameraMonitor
+
+    monitor = CameraMonitor(controller, workflow)
+    app.extensions["camera_monitor"] = monitor
+    atexit.register(monitor.shutdown)

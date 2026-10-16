@@ -84,11 +84,14 @@ class QueueRepository:
     def automatic_items(self):
         with self.database.connect() as connection:
             rows = connection.execute(
-                "SELECT q.*, c.macroregion, c.destination, c.status AS phase FROM operation_queue q "
+                "SELECT q.*, c.macroregion, c.destination, c.status AS phase, "
+                "EXISTS(SELECT 1 FROM cycle_events e WHERE e.cycle_id = q.cycle_id "
+                "AND e.event_type = 'GARRA_RETORNOU') AS arm_done FROM operation_queue q "
                 "LEFT JOIN cycles c ON c.cycle_id = q.cycle_id WHERE q.origin = 'automatico' ORDER BY q.id DESC LIMIT 100"
             ).fetchall()
         return [{**self._serialize(row), "macroregiao": row["macroregion"], "destino": row["destination"],
-                 "etapa": row["phase"], "criado_em": row["created_at"]} for row in reversed(rows)]
+                 "etapa": row["phase"], "braco_concluido": bool(row["arm_done"]),
+                 "transporte_estado": row["phase"], "criado_em": row["created_at"]} for row in reversed(rows)]
 
     def recent(self):
         with self.database.connect() as connection:

@@ -2,7 +2,7 @@
 
 from io import BytesIO
 
-from vision.qrcode import ARUCO_PRINT_SIZES_MM, CameraDependencyError, generate_aruco_png
+from vision.aruco import ARUCO_PRINT_SIZES_MM, CameraDependencyError, generate_aruco_png
 from core.classifier import STATE_TO_MACROREGION
 
 

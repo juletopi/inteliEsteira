@@ -9,7 +9,7 @@ import numpy as np
 
 from app import create_app
 from hardware.arduino import ArduinoDisconnectedError
-from vision.qrcode import QRCodeCamera
+from vision.aruco import CameraCaptureError, ArucoCamera, generate_aruco_png
 
 
 class ApiTests(unittest.TestCase):
@@ -83,7 +83,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn('id="product-form"', products_html)
         self.assertIn('id="products-table-body"', products_html)
         self.assertIn("/api/products", products_html)
-        self.assertIn("Baixar QR", products_html)
+        self.assertNotIn("Baixar QR", products_html)
+        self.assertNotIn("QR Code", products_html)
         self.assertIn("Baixar ArUco", products_html)
         self.assertIn('text: "Excluir"', products_html)
         self.assertIn('id="aruco-size"', products_html)
@@ -168,7 +169,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.delete("/api/products/REMOVE").status_code, 404)
         self.assertEqual(self.client.delete("/api/products/UNKNOWN").status_code, 404)
         self.assertEqual(self.client.put("/api/products/REMOVE", json={"ativo": True}).status_code, 404)
-        self.assertEqual(self.client.get("/api/products/REMOVE/qrcode").status_code, 404)
+        self.assertEqual(self.client.get("/api/products/REMOVE/qrcode").status_code, 410)
         self.assertEqual(self.client.post("/api/products/REMOVE/aruco").status_code, 404)
         route = self.client.post("/api/route", json={"qr_code": self.qr("REMOVE")})
         self.assertEqual(route.status_code, 404)
@@ -203,22 +204,19 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIsNone(self.client.application.extensions["product_repository"].get("NEW")["aruco_id"])
 
-    def test_product_qrcode_is_generated_as_png(self):
+    def test_product_qrcode_generation_is_removed(self):
         self.register_product("PROD-QR-1", "MG")
 
         response = self.client.get("/api/products/PROD-QR-1/qrcode?download=1")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.mimetype, "image/png")
-        self.assertTrue(response.data.startswith(b"\x89PNG\r\n\x1a\n"))
-        self.assertIn("attachment", response.headers["Content-Disposition"])
-        self.assertIn("qr-PROD-QR-1.png", response.headers["Content-Disposition"])
+        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.get_json()["erro"]["codigo"], "QR_CODE_REMOVED")
 
     def test_unknown_product_has_no_qrcode(self):
         response = self.client.get("/api/products/UNKNOWN/qrcode")
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.get_json()["erro"]["codigo"], "PRODUCT_NOT_FOUND")
+        self.assertEqual(response.status_code, 410)
+        self.assertEqual(response.get_json()["erro"]["codigo"], "QR_CODE_REMOVED")
 
     def test_aruco_registration_download_and_cycle(self):
         self.register_product("PROD-ARUCO", "MG")
@@ -237,8 +235,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("attachment", image.headers["Content-Disposition"])
         frame = cv2.imdecode(np.frombuffer(image.data, dtype=np.uint8), cv2.IMREAD_COLOR)
         repository = self.client.application.extensions["product_repository"]
-        camera = QRCodeCamera(cv2_module=cv2, aruco_resolver=repository.resolve_aruco)
-        self.assertEqual(camera.read_qrcode(frame), self.qr("PROD-ARUCO").replace(": ", ":"))
+        camera = ArucoCamera(cv2_module=cv2, aruco_resolver=repository.resolve_aruco)
+        self.assertEqual(camera.read_aruco(frame), self.qr("PROD-ARUCO").replace(": ", ":"))
 
         camera.mode = "opencv"
         camera.capture_frame = lambda: frame
@@ -385,7 +383,7 @@ class ApiTests(unittest.TestCase):
 
     def test_restored_aruco_matches_old_label_and_survives_restart(self):
         # A etiqueta ja existia antes de este banco receber o cadastro.
-        from vision.qrcode import generate_aruco_png
+        from vision.aruco import generate_aruco_png
 
         old_png = generate_aruco_png(17)
         self.register_product("OTHER", "SP")
@@ -407,9 +405,9 @@ class ApiTests(unittest.TestCase):
 
         repository = restarted.extensions["product_repository"]
         frame = cv2.imdecode(np.frombuffer(old_png, dtype=np.uint8), cv2.IMREAD_COLOR)
-        camera = QRCodeCamera(cv2_module=cv2, aruco_resolver=repository.resolve_aruco)
-        self.assertEqual(camera.read_qrcode(frame), '{"produto_id":"PROD-0087"}')
-        route = client.post("/api/route", json={"qr_code": camera.read_qrcode(frame)})
+        camera = ArucoCamera(cv2_module=cv2, aruco_resolver=repository.resolve_aruco)
+        self.assertEqual(camera.read_aruco(frame), '{"produto_id":"PROD-0087"}')
+        route = client.post("/api/route", json={"qr_code": camera.read_aruco(frame)})
         self.assertEqual(route.status_code, 200)
         self.assertEqual(route.get_json()["produto"], {"id": "PROD-0087", "uf": "CE"})
 
@@ -448,6 +446,138 @@ class ApiTests(unittest.TestCase):
             response.get_json()["erro"]["codigo"],
             "CAMERA_PREVIEW_UNAVAILABLE",
         )
+
+    def diagnostic_camera(self, marker_id=None):
+        extensions = self.client.application.extensions
+        camera = ArucoCamera(aruco_resolver=extensions["product_repository"].resolve_aruco)
+        frame = np.full((400, 400, 3), 255, dtype=np.uint8) if marker_id is None else cv2.imdecode(
+            np.frombuffer(generate_aruco_png(marker_id), dtype=np.uint8), cv2.IMREAD_COLOR,
+        )
+        extensions["camera"] = camera
+        extensions["system_controller"].camera = camera
+        return camera, frame
+
+    def test_camera_diagnostic_validates_aruco_without_operational_side_effects(self):
+        self.register_product("PROD-0087", "CE")
+        self.client.post("/api/products/PROD-0087/aruco", json={"aruco_id": 17})
+        camera, frame = self.diagnostic_camera(17)
+        extensions = self.client.application.extensions
+        controller = extensions["system_controller"]
+        before = (controller.state.snapshot(), extensions["workflow"].snapshot(),
+                  extensions["cycle_repository"].list_recent(100), list(extensions["arduino"].command_log))
+        with patch.object(camera, "capture_frame", return_value=frame):
+            for _ in range(2):
+                response = self.client.post("/api/camera/identify")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json(), {
+                    "ok": True, "diagnostico": True,
+                    "produto": {"id": "PROD-0087", "uf": "CE"},
+                    "macroregiao": "NORDESTE", "destino": "R07", "candidatos": ["R07", "R08"],
+                })
+        after = (controller.state.snapshot(), extensions["workflow"].snapshot(),
+                 extensions["cycle_repository"].list_recent(100), list(extensions["arduino"].command_log))
+        self.assertEqual(before, after)
+        self.assertIsNone(camera._last_qr_code)
+
+    def test_camera_diagnostic_rejects_missing_unknown_and_inactive_markers(self):
+        self.register_product("INACTIVE", "SP")
+        self.client.post("/api/products/INACTIVE/aruco", json={"aruco_id": 17})
+        self.client.put("/api/products/INACTIVE", json={"ativo": False})
+        for marker_id, code in ((None, "ARUCO_NOT_FOUND"), (99, "ARUCO_NOT_REGISTERED"),
+                                (17, "PRODUCT_INACTIVE")):
+            with self.subTest(marker_id=marker_id):
+                camera, frame = self.diagnostic_camera(marker_id)
+                with patch.object(camera, "capture_frame", return_value=frame):
+                    response = self.client.post("/api/camera/identify")
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.get_json()["erro"]["codigo"], code)
+        self.assertEqual(self.client.application.extensions["cycle_repository"].list_recent(100), [])
+
+    def test_camera_diagnostic_requires_real_camera(self):
+        response = self.client.post("/api/camera/identify", json={"qr_code": self.qr("INJECTED")})
+        self.assertEqual(response.status_code, 409)
+
+    def test_camera_diagnostic_does_not_capture_during_automatic_or_manual_cycle(self):
+        camera, frame = self.diagnostic_camera()
+        controller = self.client.application.extensions["system_controller"]
+        workflow = self.client.application.extensions["workflow"]
+        with patch.object(camera, "capture_frame", return_value=frame) as capture:
+            with patch.object(workflow, "running", return_value=True):
+                self.assertEqual(self.client.post("/api/camera/identify").status_code, 409)
+            controller._cycle_lock.acquire()
+            try:
+                self.assertEqual(self.client.post("/api/camera/identify").status_code, 409)
+            finally:
+                controller._cycle_lock.release()
+            capture.assert_not_called()
+
+    def test_camera_diagnostic_capture_error_releases_cycle_lock(self):
+        camera, _frame = self.diagnostic_camera()
+        with patch.object(camera, "capture_frame", side_effect=CameraCaptureError("Frame invalido.")):
+            response = self.client.post("/api/camera/identify")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["erro"]["codigo"], "CAMERA_CAPTURE_ERROR")
+        lock = self.client.application.extensions["system_controller"]._cycle_lock
+        self.assertTrue(lock.acquire(blocking=False))
+        lock.release()
+
+    def test_diagnostic_identification_is_visible_in_status_without_creating_production(self):
+        self.register_product("OBSERVED", "GO")
+        self.client.post("/api/products/OBSERVED/aruco", json={"aruco_id": 17})
+        camera, frame = self.diagnostic_camera(17)
+        with patch.object(camera, "capture_frame", return_value=frame), patch.object(camera, "is_connected", return_value=True):
+            self.assertEqual(self.client.post("/api/camera/identify").status_code, 200)
+            status = self.client.get("/api/status").get_json()
+        self.assertEqual(status["identificacao"]["produto"]["id"], "OBSERVED")
+        self.assertEqual(status["identificacao"]["destino"], "R09")
+        self.assertTrue(status["identificacao"]["somente_observacao"])
+        self.assertEqual(status["producao"], [])
+        self.assertEqual(status["fila"]["itens"], [])
+
+    def test_passive_camera_monitor_runs_without_starting_workflow(self):
+        from time import monotonic, sleep
+
+        self.register_product("OBSERVED", "GO")
+        self.client.post("/api/products/OBSERVED/aruco", json={"aruco_id": 17})
+        camera, frame = self.diagnostic_camera(17)
+        extensions = self.client.application.extensions
+        monitor = extensions["camera_monitor"]
+        with patch.object(camera, "capture_frame", return_value=frame):
+            try:
+                monitor.start()
+                deadline = monotonic() + 2
+                while monitor.snapshot()["estado"] != "IDENTIFICADO" and monotonic() < deadline:
+                    sleep(0.01)
+                self.assertEqual(monitor.snapshot()["produto"]["id"], "OBSERVED")
+            finally:
+                monitor.shutdown()
+        self.assertFalse(monitor._worker.is_alive())
+        self.assertFalse(extensions["workflow"].running())
+        self.assertEqual(extensions["arduino"].command_log, [])
+        self.assertEqual(extensions["cycle_repository"].list_recent(), [])
+
+    def test_observation_tolerates_brief_missed_frames_but_expires_and_rejects_unknown_ids(self):
+        self.register_product("OBSERVED", "GO")
+        self.client.post("/api/products/OBSERVED/aruco", json={"aruco_id": 17})
+        camera, frame = self.diagnostic_camera(17)
+        monitor = self.client.application.extensions["camera_monitor"]
+        with patch.object(camera, "capture_frame", return_value=frame), patch("app.services.camera_monitor.monotonic", return_value=10):
+            monitor.observe_once()
+        with patch.object(camera, "capture_frame", return_value=np.full_like(frame, 255)):
+            with patch("app.services.camera_monitor.monotonic", return_value=10.5):
+                self.assertEqual(self.client.post("/api/camera/identify").status_code, 422)
+                self.assertEqual(monitor.snapshot()["estado"], "IDENTIFICADO")
+                self.assertFalse(monitor.snapshot()["visivel"])
+            with patch("app.services.camera_monitor.monotonic", return_value=12):
+                self.assertEqual(self.client.post("/api/camera/identify").status_code, 422)
+                self.assertEqual(monitor.snapshot()["estado"], "SEM_ARUCO")
+        with patch.object(camera, "capture_frame", return_value=frame):
+            monitor.observe_once()
+        unknown = cv2.imdecode(np.frombuffer(generate_aruco_png(99), dtype=np.uint8), cv2.IMREAD_COLOR)
+        with patch.object(camera, "capture_frame", return_value=unknown):
+            self.assertEqual(self.client.post("/api/camera/identify").status_code, 422)
+        self.assertEqual(monitor.snapshot()["estado"], "ERRO")
+        self.assertIsNone(monitor.snapshot()["produto"])
 
     def test_real_camera_mode_accepts_cycle_without_qr_in_request(self):
         self.register_product("CAMERA-1", "RJ")

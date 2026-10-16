@@ -1,4 +1,4 @@
-"""Captura pela webcam, leitura e geracao dos QR Codes do projeto."""
+"""Captura pela webcam, identificacao e geracao de etiquetas ArUco."""
 
 from __future__ import annotations
 
@@ -28,19 +28,19 @@ class CameraCaptureError(CameraError):
     code = "CAMERA_CAPTURE_ERROR"
 
 
-class QRCodeNotFoundError(CameraError):
-    code = "QR_CODE_NOT_FOUND"
+class ArucoNotFoundError(CameraError):
+    code = "ARUCO_NOT_FOUND"
 
 
 class ArucoNotRegisteredError(CameraError):
     code = "ARUCO_NOT_REGISTERED"
 
 
-class QRCodeCamera:
+class ArucoCamera:
     """Adaptador OpenCV para uma webcam local.
 
     A captura e protegida por lock porque o painel pode solicitar uma imagem de
-    preview enquanto o controller esta procurando um QR Code.
+    preview enquanto o controller esta procurando um ArUco.
     """
 
     mode = "opencv"
@@ -65,15 +65,12 @@ class QRCodeCamera:
         self.retry_interval = max(0.01, float(retry_interval))
         self.duplicate_cooldown = max(0.0, float(duplicate_cooldown))
         self._cv2 = cv2_module or _load_cv2()
-        self._detector = self._cv2.QRCodeDetector()
         self._aruco_resolver = aruco_resolver
-        self._aruco_detector = None
-        if aruco_resolver is not None:
-            aruco = getattr(self._cv2, "aruco", None)
-            if aruco is None:
-                raise CameraDependencyError("O OpenCV instalado nao oferece deteccao ArUco.")
-            dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_250)
-            self._aruco_detector = aruco.ArucoDetector(dictionary)
+        aruco = getattr(self._cv2, "aruco", None)
+        if aruco is None:
+            raise CameraDependencyError("O OpenCV instalado nao oferece deteccao ArUco.")
+        dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_250)
+        self._aruco_detector = aruco.ArucoDetector(dictionary)
         self._capture = None
         self._lock = RLock()
         self._last_qr_code = None
@@ -124,9 +121,9 @@ class QRCodeCamera:
                 raise CameraCaptureError("A webcam nao entregou um frame valido.")
             return frame
 
-    def read_qrcode(self, frame) -> str:
+    def read_aruco(self, frame) -> str:
         if frame is None:
-            raise QRCodeNotFoundError("Nenhum frame foi informado para leitura.")
+            raise ArucoNotFoundError("Nenhum frame foi informado para leitura.")
         if self.pickup_roi is not None:
             height, width = frame.shape[:2]
             x, y, w, h = self.pickup_roi
@@ -134,41 +131,22 @@ class QRCodeCamera:
                           int(x * width):max(int((x + w) * width), int(x * width) + 1)]
 
         try:
-            decoded, _points, _straight = self._detector.detectAndDecode(frame)
+            _corners, ids, _rejected = self._aruco_detector.detectMarkers(frame)
         except Exception as exc:
-            raise CameraCaptureError(
-                "O OpenCV nao conseguiu analisar o frame da webcam."
-            ) from exc
+            raise CameraCaptureError("O OpenCV nao conseguiu analisar o marcador ArUco.") from exc
+        if ids is not None and len(ids):
+            if len(ids) != 1:
+                raise CameraError("Mais de um marcador ArUco na area de leitura.")
+            marker_id = int(ids[0][0])
+            product = self._aruco_resolver(marker_id) if self._aruco_resolver else None
+            if product is None:
+                raise ArucoNotRegisteredError(
+                    f"O marcador ArUco {marker_id} nao esta vinculado a um produto."
+                )
+            return build_product_payload(product["id"])
+        raise ArucoNotFoundError("Nenhum ArUco encontrado na area de leitura.")
 
-        decoded = decoded.strip() if isinstance(decoded, str) else ""
-        if decoded:
-            if hasattr(self._detector, "detectAndDecodeMulti"):
-                success, codes, _points, _straight = self._detector.detectAndDecodeMulti(frame)
-                if success and len(codes) > 1:
-                    raise CameraError("Mais de uma etiqueta QR na area de coleta. Apresente uma unidade por vez.")
-            if self._aruco_detector is not None:
-                _corners, ids, _rejected = self._aruco_detector.detectMarkers(frame)
-                if ids is not None and len(ids):
-                    raise CameraError("QR e ArUco simultaneos na area de coleta. Apresente uma etiqueta por vez.")
-            return decoded
-        if self._aruco_detector is not None:
-            try:
-                _corners, ids, _rejected = self._aruco_detector.detectMarkers(frame)
-            except Exception as exc:
-                raise CameraCaptureError("O OpenCV nao conseguiu analisar o marcador ArUco.") from exc
-            if ids is not None and len(ids):
-                if len(ids) != 1:
-                    raise CameraError("Mais de um marcador ArUco no frame.")
-                marker_id = int(ids[0][0])
-                product = self._aruco_resolver(marker_id)
-                if product is None:
-                    raise ArucoNotRegisteredError(
-                        f"O marcador ArUco {marker_id} nao esta vinculado a um produto."
-                    )
-                return build_product_qr_payload(product["id"])
-        raise QRCodeNotFoundError("Nenhum QR Code ou ArUco encontrado no frame.")
-
-    def scan_qrcode(self, timeout=None, cancelled=None) -> str:
+    def scan_aruco(self, timeout=None, cancelled=None) -> str:
         """Le frames continuamente ate encontrar um QR novo ou expirar."""
 
         scan_timeout = self.scan_timeout if timeout is None else max(0.1, float(timeout))
@@ -180,8 +158,8 @@ class QRCodeCamera:
                 raise CameraError("A leitura da camera foi interrompida.")
             frame = self.capture_frame()
             try:
-                qr_code = self.read_qrcode(frame)
-            except QRCodeNotFoundError:
+                qr_code = self.read_aruco(frame)
+            except ArucoNotFoundError:
                 sleep(self.retry_interval)
                 continue
 
@@ -199,12 +177,12 @@ class QRCodeCamera:
             return qr_code
 
         if duplicate_seen:
-            raise QRCodeNotFoundError(
-                "O QR Code ainda e o mesmo da leitura anterior. Retire o produto "
+            raise ArucoNotFoundError(
+                "O ArUco ainda e o mesmo da leitura anterior. Retire o produto "
                 "da camera e tente novamente."
             )
-        raise QRCodeNotFoundError(
-            f"Nenhum QR Code foi encontrado em {scan_timeout:.1f} segundos."
+        raise ArucoNotFoundError(
+            f"Nenhum ArUco foi encontrado em {scan_timeout:.1f} segundos."
         )
 
     def wait_until_clear(self, timeout=0.5, cancelled=None):
@@ -215,9 +193,9 @@ class QRCodeCamera:
             if cancelled is not None and cancelled():
                 return False
             try:
-                self.read_qrcode(self.capture_frame())
+                self.read_aruco(self.capture_frame())
                 empty_frames = 0
-            except QRCodeNotFoundError:
+            except ArucoNotFoundError:
                 empty_frames += 1
                 if empty_frames >= 3:
                     self._last_qr_code = None
@@ -259,39 +237,14 @@ class QRCodeCamera:
             }
 
 
-def build_product_qr_payload(product_id: str) -> str:
-    """Gera o JSON canonico gravado no QR Code."""
+def build_product_payload(product_id: str) -> str:
+    """Payload interno do produto resolvido pelo ID ArUco, nao uma etiqueta QR."""
 
     return json.dumps(
         {"produto_id": product_id},
         ensure_ascii=False,
         separators=(",", ":"),
     )
-
-
-def generate_product_qr_png(product_id: str) -> bytes:
-    """Gera um PNG pronto para imprimir ou exibir no produto."""
-
-    try:
-        import qrcode
-        from qrcode.constants import ERROR_CORRECT_M
-    except ImportError as exc:
-        raise CameraDependencyError(
-            "A biblioteca qrcode nao esta instalada. Execute pip install -r requirements.txt."
-        ) from exc
-
-    qr = qrcode.QRCode(
-        version=None,
-        error_correction=ERROR_CORRECT_M,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(build_product_qr_payload(product_id))
-    qr.make(fit=True)
-    image = qr.make_image(fill_color="black", back_color="white")
-    output = BytesIO()
-    image.save(output, format="PNG")
-    return output.getvalue()
 
 
 ARUCO_PRINT_SIZES_MM = (50, 40, 30, 20)

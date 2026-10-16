@@ -38,6 +38,40 @@ A bancada recusa o banco principal. Nao abra duas instancias com o mesmo banco.
 
 ## 2. Testar ArUco com a webcam
 
+Para validar somente a leitura e o cadastro, pare a aplicacao, feche outros
+programas que usam a webcam e inicie na mesma janela do PowerShell:
+
+```powershell
+$env:AUTO_OPERATION = "0"
+$env:CAMERA_MODE = "opencv"
+$env:CAMERA_INDEX = "1"
+.\.venv\Scripts\python.exe start.py
+```
+
+Com uma etiqueta na area E01 do preview, execute em outro terminal:
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:5000/api/camera/identify |
+    ConvertTo-Json -Depth 5
+```
+
+Cada chamada analisa um frame real, aplica a ROI configurada e valida o produto
+ativo e sua rota no cadastro. Nao cria fila/ciclo, nao envia comandos aos
+equipamentos e nao consome o cooldown de leitura. A rota retornada e apenas um
+diagnostico, sem reservar destino. O endpoint fica bloqueado durante a operacao
+automatica ou um ciclo avulso. Sem etiqueta, devolve `ARUCO_NOT_FOUND`; um ArUco
+sem cadastro devolve `ARUCO_NOT_REGISTERED`. O indice 1 deve ser ajustado se a
+webcam USB aparecer em outro indice nessa maquina.
+
+Com o fluxo parado, o monitor em segundo plano tambem analisa a camera a cada
+400 ms e atualiza um card de observacao no Dashboard, sem iniciar coleta.
+Falhas breves de deteccao toleram ate 1,5 s desde a ultima leitura valida;
+marcador desconhecido ou erro de captura limpa a identificacao imediatamente.
+Na operacao automatica, somente o ciclo autorizado pelo HC-SR04 usa a camera.
+QR Code nao e mais lido nem gerado. Etiquetas ArUco existentes continuam validas.
+
+Para testar o ciclo inteiro com controladores virtuais, pare o servidor anterior:
+
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.bancada --camera opencv
 ```
@@ -125,14 +159,23 @@ Pelo SSH, confirme primeiro:
 
 ```sh
 command -v pybricks-micropython
+command -v brickrun
 cd /home/robot/inteliEsteira/ev3
-pybricks-micropython server.py
+brickrun -r -- pybricks-micropython server.py
 ```
 
 O caminho acima e um EXEMPLO. Confirme tambem o usuario e o ambiente
 Pybricks 2.x/ev3dev do colaborador. Depois de verificar o receptor manualmente,
 pare-o e adapte `ev3/inteliesteira.service.example` aos caminhos reais. O exemplo
-usa systemd, usuario `robot` e executavel `/usr/bin/pybricks-micropython`.
+usa systemd, usuario `robot`, `/usr/bin/brickrun` e `/usr/bin/pybricks-micropython`.
+Em ev3dev-stretch, iniciar Pybricks diretamente pelo SSH pode gerar
+`Could not initialize graphics`; `brickrun -r --` prepara o console e redireciona
+a saida ao terminal SSH. Se `find /home/robot -type f -name server.py` nao retornar
+nada, os arquivos da integracao ainda precisam ser copiados ao EV3.
+Copie juntos `server.py`, `bridge.py`, `main.py` e `calibration.py` da versao
+atual. As importacoes usam a pasta local quando nao ha contexto de pacote;
+isso evita `KeyError: __main__` em versoes do MicroPython do EV3. O token
+existente deve ser preservado ao atualizar esses arquivos Python.
 O usuario deve ter acesso aos motores e ao arquivo token. Instale no proprio EV3:
 
 ```sh

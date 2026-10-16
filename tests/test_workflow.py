@@ -5,7 +5,7 @@ import unittest
 
 from app import create_app
 from hardware.protocol import parse_message
-from vision.qrcode import build_product_qr_payload
+from vision.aruco import build_product_payload
 
 
 class WorkflowTests(unittest.TestCase):
@@ -67,21 +67,21 @@ class WorkflowTests(unittest.TestCase):
         events = self.app.extensions["cycle_repository"].get(item["ciclo_id"], include_events=True)["eventos"]
         names = [event["tipo"] for event in events]
         for earlier, later in (("PRESENCA_CONFIRMADA", "OBJETO_COLETADO"),
-                               ("OBJETO_ENTREGUE_NA_ESTEIRA", "QR_LIDO"),
-                               ("QR_LIDO", "ESTEIRA_INICIADA"), ("ESTEIRA_INICIADA", "DESTINO_ALCANCADO")):
+                               ("OBJETO_ENTREGUE_NA_ESTEIRA", "ARUCO_LIDO"),
+                               ("ARUCO_LIDO", "ESTEIRA_INICIADA"), ("ESTEIRA_INICIADA", "DESTINO_ALCANCADO")):
             self.assertLess(names.index(earlier), names.index(later))
 
     def test_queue_is_created_only_after_identification_on_the_belt(self):
         self.start()
         camera = self.app.extensions["camera"]
-        original = camera.scan_qrcode
+        original = camera.scan_aruco
 
         def read_on_belt(**kwargs):
             self.assertIn("GARRA:SOLTAR", self.commands())
             self.assertEqual(self.flow.snapshot()["itens"], [])
             return original(**kwargs)
 
-        camera.scan_qrcode = read_on_belt
+        camera.scan_aruco = read_on_belt
         self.present("SECOND")
         self.completed(1)
 
@@ -93,6 +93,12 @@ class WorkflowTests(unittest.TestCase):
         self.wait_for(lambda: self.app.extensions["system_controller"].state.snapshot()["estado"] == "TRANSPORTANDO")
         self.assertFalse(self.flow.snapshot()["proxima_caixa_liberada"])
         self.assertEqual(self.flow.snapshot()["itens"][0]["estado"], "PROCESSANDO")
+        self.assertTrue(self.flow.snapshot()["itens"][0]["braco_concluido"])
+        production = self.client.get("/api/status").get_json()["producao"][0]
+        self.assertTrue(production["braco_concluido"])
+        self.assertIsNotNone(production["braco_finalizado_em"])
+        self.assertEqual(production["transporte_estado"], "TRANSPORTANDO")
+        self.assertTrue(production["simulado"])
         self.hardware.presence.update(False)
         self.hardware.presence.update(True, 5)
         self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
@@ -160,7 +166,7 @@ class WorkflowTests(unittest.TestCase):
         self.start()
         second = create_app(self.config)
         self.assertEqual(second.test_client().post("/api/flow/start").status_code, 409)
-        self.assertEqual(self.client.post("/api/cycles", json={"qr_code": build_product_qr_payload("FIRST")}).status_code, 409)
+        self.assertEqual(self.client.post("/api/cycles", json={"qr_code": build_product_payload("FIRST")}).status_code, 409)
         self.assertEqual(second.extensions["arduino"].command_log, [])
 
     def test_restart_reconciles_unfinished_cycle_without_pickup_replay(self):
@@ -197,7 +203,7 @@ class WorkflowTests(unittest.TestCase):
     def test_restart_reconciles_completed_cycle_before_queue_was_updated(self):
         self.flow.repository.acquire("old")
         cycles = self.app.extensions["cycle_repository"]
-        cycles.start("done", build_product_qr_payload("FIRST"))
+        cycles.start("done", build_product_payload("FIRST"))
         self.flow.repository.detected("old", "FIRST", "done")
         self.flow.repository.set_info("old", ciclo_id="done")
         cycles.complete("done")
@@ -233,7 +239,7 @@ class WorkflowTests(unittest.TestCase):
             app.extensions["product_repository"].create("FIRST", "CE")
             flow.start()
             self.wait_for(lambda: flow.snapshot()["proxima_caixa_liberada"])
-            app.extensions["camera"].enqueue_qr_code(build_product_qr_payload("FIRST"))
+            app.extensions["camera"].enqueue_qr_code(build_product_payload("FIRST"))
             app.extensions["arduino"].presence.update(True, 5)
             self.wait_for(lambda: app.extensions["cycle_repository"].count_completed() == 1)
             self.assertEqual(len(app.extensions["conveyor_server"].motion.codes), 1)

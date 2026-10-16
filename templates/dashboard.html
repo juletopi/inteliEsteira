@@ -276,14 +276,6 @@
 {% set page_eyebrow = "Visão geral da operação" %}
 {% set page_title = "Dashboard" %}
 {% from "components/metric_card.html" import metric_card %}
-{% from "components/production_card.html" import production_card %}
-{% set production_regions = [
-    ("Norte", "R01 • R02"),
-    ("Sul", "R03 • R04"),
-    ("Sudeste", "R05 • R06"),
-    ("Nordeste", "R07 • R08"),
-    ("Centro-Oeste", "R09 • R10")
-] %}
 <main id="dashboard" class="dashboard-container py-4 py-lg-5">
     {% include "components/page_header.html" with context %}
 
@@ -347,10 +339,8 @@
                     <h2>Linha de produção</h2>
                 </div>
                 <div class="production-list-shell">
-                    <div class="production-list" aria-label="Regiões da linha de produção">
-                        {% for region, robots in production_regions %}
-                            {{ production_card(region, robots) }}
-                        {% endfor %}
+                    <div id="production-cards" class="production-list" aria-label="Cubos da linha de produção" aria-live="polite">
+                        <p class="production-empty">Nenhum cubo identificado.</p>
                     </div>
                 </div>
 
@@ -362,8 +352,8 @@
                     <div id="queue-notice" class="alert alert-info py-2" role="status" aria-live="polite">Aguardando conexão dos dispositivos.</div>
                     <div class="table-responsive mb-3">
                         <table class="table table-sm align-middle automatic-queue-table">
-                            <thead><tr><th>Unidade</th><th>Produto</th><th>Região</th><th>Destino</th><th>Estado</th></tr></thead>
-                            <tbody id="queue-table-body"><tr><td colspan="5">Nenhum cubo identificado.</td></tr></tbody>
+                            <thead><tr><th>Unidade</th><th>Produto</th><th>Região</th><th>Destino</th><th>Braço</th><th>Esteira</th></tr></thead>
+                            <tbody id="queue-table-body"><tr><td colspan="6">Nenhum cubo identificado.</td></tr></tbody>
                         </table>
                     </div>
                     <div class="current-cycle" aria-label="Dados do ciclo atual">
@@ -432,8 +422,8 @@
             AGUARDANDO_SENSOR: "Aguardando cubo", COLETANDO: "Coletando cubo",
             AGUARDANDO_OBJETO: "Presença confirmada", PEGANDO_OBJETO: "Coletando cubo",
             POSICIONANDO_OBJETO: "Posicionando na esteira", SOLTANDO_OBJETO: "Depositando na esteira",
-            OBJETO_POSICIONADO: "Cubo na esteira", LENDO_QR: "Identificando ArUco",
-            VALIDANDO_QR: "Validando cadastro", DESTINO_DEFINIDO: "Destino definido",
+            OBJETO_POSICIONADO: "Cubo na esteira", LENDO_ARUCO: "Identificando ArUco",
+            VALIDANDO_ARUCO: "Validando cadastro", DESTINO_DEFINIDO: "Destino definido",
             TRANSPORTANDO: "Em transporte", FINALIZADO: "Concluída", ERRO: "Erro",
             INTERROMPIDO: "Interrompida", PARADO: "Parado"};
 
@@ -441,12 +431,13 @@
         const queueItems = snapshot.itens || [];
         const $body = $("#queue-table-body").empty();
         $("#queue-count").text(`${queueItems.length} unidade${queueItems.length === 1 ? "" : "s"}`);
-        if (!queueItems.length) $body.append($("<tr>").append($("<td>", {colspan: 5}).text("Nenhum cubo identificado.")));
+        if (!queueItems.length) $body.append($("<tr>").append($("<td>", {colspan: 6}).text("Nenhum cubo identificado.")));
         queueItems.forEach((item, index) => {
             const phase = item.estado === "PROCESSANDO" ?
                 (snapshot.fluxo?.ciclo_id === item.ciclo_id ? snapshot.fluxo.estado : item.etapa) : item.estado;
             $body.append($("<tr>").append($("<td>").text(index + 1), $("<td>").text(item.produto_id),
                 $("<td>").text((item.macroregiao || "—").replace("_", "-")), $("<td>").text(item.destino || "—"),
+                $("<td>").append(item.braco_concluido ? completionMark("Concluído") : document.createTextNode("Em operação")),
                 $("<td>").text(labels[phase] || phase).attr("title", item.erro?.mensagem || "")));
         });
         const flow = snapshot.fluxo || {};
@@ -455,6 +446,44 @@
         if (flow.aviso) parts.push(flow.aviso);
         if (flow.erro) parts.push(flow.erro.mensagem);
         $("#queue-notice").text(parts.join(" | "));
+    }
+
+    function completionMark(label) {
+        return $("<span>", {class: "production-done"}).append(
+            $("<i>", {class: "bi bi-check-circle-fill", "aria-hidden": "true"}),
+            document.createTextNode(` ${label}`));
+    }
+
+    function renderProduction(data) {
+        const $cards = $("#production-cards").empty();
+        const observation = data.identificacao || {};
+        if (observation.estado === "IDENTIFICADO" && observation.produto) {
+            $cards.append($("<article>", {class: "production-card observation-card"}).append(
+                $("<span>").text("ArUco identificado · observação"),
+                $("<strong>").text(observation.produto.id),
+                $("<p>").text(`${observation.produto.uf} · ${observation.macroregiao.replaceAll("_", "-")}`),
+                $("<p>").text(`Destino calculado: ${observation.destino}`),
+                $("<small>").text("Sem coleta autorizada")));
+        } else if (observation.estado === "ERRO") {
+            $cards.append($("<article>", {class: "production-card error-card"}).append(
+                $("<span>").text("Leitura da câmera"), $("<strong>").text("Identificação pendente"),
+                $("<p>").text(observation.erro?.mensagem || "Falha de leitura")));
+        }
+        const cycles = data.producao || [];
+        cycles.forEach(cycle => {
+            const $card = $("<article>", {class: "production-card", "data-cycle": cycle.id});
+            $card.toggleClass("error-card", ["ERRO", "PARADO"].includes(cycle.estado));
+            const mode = cycle.simulado === true ? "Simulação" : cycle.simulado === false ? "Operação física" : "Histórico";
+            $card.append($("<span>").text(mode), $("<strong>").text(cycle.produto_id || "Cubo em coleta"),
+                $("<p>").text(cycle.aruco_id != null ? `ArUco ${cycle.aruco_id} · ${cycle.uf}` : cycle.uf || "Aguardando ArUco"),
+                $("<p>").text(cycle.destino ? `${cycle.macroregiao.replaceAll("_", "-")} · ${cycle.destino}` : "Destino pendente"),
+                $("<p>").append(cycle.braco_concluido ? completionMark("Braço concluído") : document.createTextNode(`Braço: ${labels[cycle.estado] || cycle.estado}`)),
+                $("<p>").append(cycle.transporte_estado === "FINALIZADO" ? completionMark("Esteira concluída") :
+                    document.createTextNode(`Esteira: ${labels[cycle.transporte_estado] || cycle.transporte_estado}`)),
+                $("<small>").text(cycle.erro?.mensagem || cycle.id));
+            $cards.append($card);
+        });
+        if (!$cards.children().length) $cards.append($("<p>", {class: "production-empty"}).text("Nenhum cubo identificado."));
     }
 
     function releasePreviewRequest() {
@@ -501,6 +530,7 @@
             currentCameraMode = data.camera_modo;
             currentCameraConnected = Boolean(data.camera);
             renderQueue(data.fila);
+            renderProduction(data);
             const sensor = data.fila.sensor || {};
             $("#presence-status").toggleClass("badge-offline", sensor.presente === null || sensor.presente === undefined)
                 .text(sensor.presente === true ? `Cubo detectado · ${sensor.distancia_cm} cm` :
@@ -523,6 +553,12 @@
             $("#current-state").text(data.uf || "—");
             $("#current-macroregion").text(data.macroregiao || "—");
             $("#current-destination").text(data.destino || "—");
+            if (data.identificacao?.estado === "IDENTIFICADO" && !data.fila.fluxo.ativo) {
+                $("#current-product").text(data.identificacao.produto.id);
+                $("#current-state").text(data.identificacao.produto.uf);
+                $("#current-macroregion").text(data.identificacao.macroregiao);
+                $("#current-destination").text(`${data.identificacao.destino} (calculado)`);
+            }
             const error = data.erro || data.fila.fluxo.erro;
             $("#system-alert").toggleClass("d-none", !error);
             if (error) $("#system-alert-message").text(error.mensagem);

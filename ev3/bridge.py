@@ -1,8 +1,8 @@
 """Maquina de comandos do EV3, compativel com MicroPython e testavel no PC."""
 
-try:
+if globals().get("__package__"):
     from .calibration import DESTINATION_TO_CODE
-except ImportError:
+else:
     from calibration import DESTINATION_TO_CODE
 
 
