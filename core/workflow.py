@@ -6,7 +6,7 @@ from uuid import uuid4
 from core.controller import ControllerError
 from hardware.device import HardwareError
 from storage.queue import QueueError
-from vision.qrcode import CameraError
+from vision.aruco import CameraError
 
 
 class Workflow:

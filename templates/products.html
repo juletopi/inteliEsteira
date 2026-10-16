@@ -174,7 +174,7 @@
                 </form>
 
                 <div id="product-feedback" class="feedback" role="status" aria-live="polite">
-                    Cadastre um produto para gerar sua etiqueta QR Code ou ArUco.
+                    Nenhum produto selecionado.
                 </div>
             </article>
         </div>
@@ -348,13 +348,6 @@
                 text: "Excluir",
                 title: `Excluir ${product.id} do catálogo`
             }).on("click", () => deleteProduct(product, $deleteAction));
-            const qrUrl = `{{ url_for('api.list_products') }}/${encodeURIComponent(product.id)}/qrcode`;
-            const $qrAction = $("<a>", {
-                class: "btn btn-sm btn-outline-primary",
-                href: `${qrUrl}?download=1`,
-                text: "Baixar QR",
-                title: `Baixar QR Code de ${product.id}`
-            });
             const $markerCell = $("<td>");
             const $markerInput = $("<input>", {
                 type: "number",
@@ -379,7 +372,7 @@
                 title: `Baixar marcador ArUco de ${product.id}`
             }).on("click", () => downloadArUco(product, $arucoAction, $markerCell, $markerInput));
             const $actions = $("<div>", { class: "product-actions" })
-                .append($qrAction, $arucoAction, $action, $deleteAction);
+                .append($arucoAction, $action, $deleteAction);
 
             $body.append(
                 $("<tr>").append(
@@ -467,7 +460,7 @@
             await saveDownload(response, `aruco-lote-${size === "all" ? "4-tamanhos" : `${size}mm`}.pdf`);
             await loadProducts();
             setProductFeedback(
-                `PDF de ${products.length} produto${products.length === 1 ? "" : "s"} baixado. Se foram atribuídos novos IDs, exporte o catálogo atualizado.`,
+                `PDF de ${products.length} produto${products.length === 1 ? "" : "s"} baixado. Os IDs foram salvos automaticamente.`,
                 "success"
             );
         } catch (error) {
@@ -506,7 +499,7 @@
             await apiRequest(url, { method: "DELETE" });
             selectedProducts.delete(product.id);
             await loadProducts();
-            setProductFeedback(`${product.id} excluído. Exporte o catálogo atualizado antes de versionar.`, "success");
+            setProductFeedback(`${product.id} excluído. Cadastro salvo automaticamente.`, "success");
         } catch (error) {
             setProductFeedback(error.message, "error");
         } finally {
@@ -545,7 +538,7 @@
                     body: JSON.stringify({ produto_id: productId, uf: state })
                 });
                 setProductFeedback(
-                    `${productId} cadastrado com destino ${state}. Use Baixar QR ou Baixar ArUco para gerar a etiqueta.`,
+                    `${productId} cadastrado com destino ${state}.`,
                     "success"
                 );
                 $("#new-product-id").val("").trigger("focus");

@@ -41,6 +41,8 @@ def get_system_status():
     snapshot["total_ciclos"] = current_app.extensions[
         "cycle_repository"
     ].count_completed()
+    snapshot["identificacao"] = current_app.extensions["camera_monitor"].snapshot()
+    snapshot["producao"] = current_app.extensions["cycle_repository"].list_recent(30)
     snapshot["fila"] = current_app.extensions["workflow"].snapshot()
     snapshot["area_coleta"] = controller.gripper.pickup_zone
     snapshot["perfil_garra_calibrado"] = controller.gripper.calibrated

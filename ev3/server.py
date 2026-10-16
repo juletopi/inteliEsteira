@@ -8,9 +8,10 @@ except ImportError:
     import socket
     import select
 
-try:
+# MicroPython pode nao definir __package__ ao executar um arquivo diretamente.
+if globals().get("__package__"):
     from .bridge import BridgeController
-except ImportError:
+else:
     from bridge import BridgeController
 
 

@@ -16,13 +16,13 @@ class CatalogError(ValueError):
     pass
 
 
-def validate_catalog(document):
+def validate_catalog(document, *, allow_empty=False):
     if not isinstance(document, dict) or type(document.get("version")) is not int or document["version"] != 1:
         raise CatalogError("Versao de catalogo invalida: esperado version=1.")
     if document.get("aruco_dictionary") != "DICT_4X4_250":
         raise CatalogError("O catalogo deve usar o dicionario DICT_4X4_250.")
     entries = document.get("products")
-    if not isinstance(entries, list) or not entries:
+    if not isinstance(entries, list) or (not entries and not allow_empty):
         raise CatalogError("O catalogo deve conter uma lista de produtos nao vazia.")
     products, product_ids, marker_ids = [], set(), set()
     for entry in entries:
@@ -55,17 +55,19 @@ def validate_catalog(document):
     return products
 
 
-def export_catalog(database):
+def export_catalog(database, *, allow_empty=False, connection=None):
     if not database.path.is_file():
         raise CatalogError(f"Banco nao encontrado: {database.path}")
-    with database.connect() as connection:
-        columns = {row["name"] for row in connection.execute("PRAGMA table_info(products)")}
-        deleted_column = "p.deleted_at" if "deleted_at" in columns else "NULL AS deleted_at"
-        rows = connection.execute(
-            f"""SELECT p.product_id, p.state, p.active, a.marker_id, {deleted_column}
-               FROM products p LEFT JOIN aruco_markers a ON a.product_id = p.product_id
-               ORDER BY p.product_id COLLATE NOCASE"""
-        ).fetchall()
+    if connection is None:
+        with database.connect() as opened:
+            return export_catalog(database, allow_empty=allow_empty, connection=opened)
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(products)")}
+    deleted_column = "p.deleted_at" if "deleted_at" in columns else "NULL AS deleted_at"
+    rows = connection.execute(
+        f"""SELECT p.product_id, p.state, p.active, a.marker_id, {deleted_column}
+           FROM products p LEFT JOIN aruco_markers a ON a.product_id = p.product_id
+           ORDER BY p.product_id COLLATE NOCASE"""
+    ).fetchall()
     document = {
         "version": 1,
         "aruco_dictionary": "DICT_4X4_250",
@@ -76,7 +78,7 @@ def export_catalog(database):
             for row in rows
         ],
     }
-    validate_catalog(document)
+    validate_catalog(document, allow_empty=allow_empty)
     return document
 
 

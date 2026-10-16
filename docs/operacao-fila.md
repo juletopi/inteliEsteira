@@ -6,12 +6,13 @@ quantidades ou botoes de partida/parada/reset no bloco da camera.
 ```mermaid
 flowchart LR
     P[HC-SR04: cubo em P01] --> G[Garra coleta e deposita em E01]
-    G --> C[Camera le ArUco na esteira parada]
+    G --> B[Check do braco apos retorno HOME confirmado]
+    B --> C[Camera le somente ArUco na esteira parada]
     C --> V[Backend valida cadastro e destino]
     V --> Q[Registra unidade na fila]
     Q --> T[Esteira e seletor executam transporte]
     T --> E[Evento de termino do mesmo ciclo e destino]
-    E --> F[Marca unidade concluida]
+    E --> F[Marca transporte concluido e libera proxima coleta]
     F --> P
 ```
 
@@ -23,7 +24,13 @@ ciclo, regiao, destino e resultado persistidos no SQLite.
 Um ACK confirma recebimento do comando, nao conclusao. O backend aguarda
 `EVT:<ciclo>:DESTINO_ALCANCADO:<Rxx>` do controlador da esteira. O evento deve
 corresponder ao ciclo e destino ativos, e o comando de parada deve ser confirmado.
-Somente entao a unidade fica FINALIZADO e a proxima caixa e liberada.
+O check do braco e independente: vem de `GARRA_RETORNOU`, depois de coleta,
+entrega e retorno HOME confirmados. Os cards e a fila mostram esse check mesmo
+enquanto o transporte esta pendente ou em andamento. `braco_concluido` e
+`transporte_estado` ficam separados na API. Uma falha na esteira nao desfaz a
+conclusao do braco nem pode ser apresentada como transporte concluido.
+Somente apos o termino da esteira o ciclo de transporte fica FINALIZADO e a
+proxima caixa e liberada. O check do braco nao autoriza uma nova coleta.
 No EV3, este evento vem do fim de toda a sequencia calibrada de motores e seletor;
 nao equivale a uma medicao fisica de chegada do cubo.
 
@@ -44,6 +51,11 @@ servidor sem placa, use `CONVEYOR_MODE=ev3_simulator`: a aplicacao inicia o serv
 TCP da esteira em localhost e uma porta livre, usando os mesmos comandos/eventos.
 
 ## HC-SR04 e firmware
+
+O HC-SR04 nao se conecta ao Flask por HTTP. Ele fica ligado ao Arduino; o
+firmware mede a distancia e informa a presenca pela USB/serial. O backend recebe
+as mensagens em segundo plano e autoriza a garra somente quando o fluxo esta
+pronto. O Arduino nao deve executar coleta autonoma em paralelo com o backend.
 
 TRIG D8 e ECHO D9. Grave a versao atual de
 `arduino/mearm_calibrador/mearm_calibrador.ino`, mantendo os headers da mesma pasta.

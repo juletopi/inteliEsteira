@@ -5,4 +5,9 @@ from config import FLASK_HOST, FLASK_PORT
 
 
 if __name__ == "__main__":
-    create_app().run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
+    app = create_app()
+    try:
+        app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
+    finally:
+        app.extensions["camera_monitor"].shutdown()
+        app.extensions["workflow"].shutdown()

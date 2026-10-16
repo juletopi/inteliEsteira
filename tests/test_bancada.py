@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -6,6 +7,19 @@ from scripts.bancada import request_ok, smoke_test, virtual_bench, wait_for
 
 
 class BenchTests(unittest.TestCase):
+    def test_bench_uses_project_catalog_instead_of_generating_test_ids(self):
+        catalog = Path(__file__).resolve().parents[1] / "data/catalogo-inicial.json"
+        document = json.loads(catalog.read_text(encoding="utf-8-sig"))
+        expected = {item["produto_id"]: item["aruco_id"] for item in document["products"] if not item.get("excluido")}
+        with TemporaryDirectory() as folder:
+            saved_catalog = Path(folder) / "catalog.json"
+            saved_catalog.write_text(json.dumps(document), encoding="utf-8")
+            for _restart in range(2):
+                with virtual_bench(Path(folder) / "bench.db", catalog=saved_catalog) as (app, _arduino, _ev3):
+                    products = app.extensions["product_repository"].list()
+                    self.assertEqual({p["id"]: p["aruco_id"] for p in products}, expected)
+                    self.assertFalse(any(p["id"].startswith("TESTE-") for p in products))
+
     def test_queue_routes_all_ten_destinations_through_both_controllers(self):
         with TemporaryDirectory() as folder:
             with virtual_bench(Path(folder) / "bench.db") as devices:

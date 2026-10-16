@@ -12,9 +12,9 @@ para permitir receber STOP e detectar perda de comunicacao durante o transporte.
 Este modulo roda no EV3, nunca dentro do Flask no computador.
 """
 
-try:
+if globals().get("__package__"):
     from .calibration import get_calibration
-except ImportError:
+else:
     from calibration import get_calibration
 
 

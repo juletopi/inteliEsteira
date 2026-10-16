@@ -1,10 +1,14 @@
 import json
+import builtins
 from pathlib import Path
+import runpy
 import socket
+import sys
 from tempfile import TemporaryDirectory
 from threading import Event, Thread
 from time import monotonic, sleep
 import unittest
+from unittest.mock import patch
 
 from app import create_app
 from ev3.bridge import BridgeController
@@ -20,6 +24,27 @@ from hardware.protocol import parse_message
 
 
 TOKEN = "token-apenas-para-testes-ev3"
+
+
+class EV3ImportTests(unittest.TestCase):
+    def test_direct_files_do_not_attempt_relative_imports_in_micropython(self):
+        folder = Path(__file__).resolve().parents[1] / "ev3"
+        original_import = builtins.__import__
+
+        def micropython_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if level and (globals or {}).get("__name__") in {"ev3_direct_script", "bridge", "main"}:
+                raise KeyError("__main__")
+            return original_import(name, globals, locals, fromlist, level)
+
+        with patch.dict(sys.modules), patch.object(sys, "path", [str(folder), *sys.path]):
+            for name in ("bridge", "calibration", "main"):
+                sys.modules.pop(name, None)
+            with patch("builtins.__import__", side_effect=micropython_import):
+                for script, exported in (("bridge.py", "BridgeController"), ("main.py", "EV3Motion"),
+                                          ("server.py", "run_server")):
+                    with self.subTest(script=script):
+                        namespace = runpy.run_path(str(folder / script), run_name="ev3_direct_script")
+                        self.assertIn(exported, namespace)
 
 
 class FakeMotion:

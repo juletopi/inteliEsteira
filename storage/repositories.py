@@ -31,10 +31,20 @@ class ProductRepository:
     def __init__(self, database):
         self.database = database
 
+    def _change(self):
+        store = getattr(self.database, "catalog_store", None)
+        return store.change() if store is not None else self.database.connect()
+
+    def _read(self):
+        store = getattr(self.database, "catalog_store", None)
+        if store is not None:
+            store.synchronize()
+        return self.database.connect()
+
     def create(self, product_id: str, state: str) -> dict:
         now = _now_iso()
         try:
-            with self.database.connect() as connection:
+            with self._change() as connection:
                 connection.execute(
                     """
                     INSERT INTO products (product_id, state, active, created_at, updated_at)
@@ -68,7 +78,7 @@ class ProductRepository:
         if not include_inactive:
             query += " AND products.active = 1"
 
-        with self.database.connect() as connection:
+        with self._read() as connection:
             row = connection.execute(query, parameters).fetchone()
         return self._serialize(row) if row else None
 
@@ -88,12 +98,12 @@ class ProductRepository:
             query += " AND products.active = 1"
         query += " ORDER BY products.product_id COLLATE NOCASE"
 
-        with self.database.connect() as connection:
+        with self._read() as connection:
             rows = connection.execute(query).fetchall()
         return [self._serialize(row) for row in rows]
 
     def resolve_aruco(self, marker_id: int) -> dict | None:
-        with self.database.connect() as connection:
+        with self._read() as connection:
             row = connection.execute(
                 """
                 SELECT products.*, aruco_markers.marker_id AS aruco_id
@@ -113,8 +123,9 @@ class ProductRepository:
 
     def ensure_aruco_batch(self, requests: list[dict]) -> list[dict]:
         """Registra o lote em uma transacao, reservando IDs explicitos primeiro."""
-        with self.database.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+        with self._change() as connection:
+            if not connection.in_transaction:
+                connection.execute("BEGIN IMMEDIATE")
             products = {}
             for item in sorted(requests, key=lambda value: value.get("aruco_id") is None):
                 product = self._ensure_aruco(connection, item["produto_id"], item.get("aruco_id"))
@@ -157,7 +168,7 @@ class ProductRepository:
         return product
 
     def update(self, product_id: str, *, state: str, active: bool) -> dict | None:
-        with self.database.connect() as connection:
+        with self._change() as connection:
             cursor = connection.execute(
                 """
                 UPDATE products
@@ -179,7 +190,7 @@ class ProductRepository:
     def delete(self, product_id: str) -> bool:
         """Retira do catalogo sem perder historico nem reciclar etiquetas antigas."""
         now = _now_iso()
-        with self.database.connect() as connection:
+        with self._change() as connection:
             cursor = connection.execute(
                 """UPDATE products SET active = 0, deleted_at = ?, updated_at = ?
                    WHERE product_id = ? AND deleted_at IS NULL""", (now, now, product_id)
@@ -304,7 +315,7 @@ class CycleRepository:
     def get(self, cycle_id: str, *, include_events: bool = False) -> dict | None:
         with self.database.connect() as connection:
             row = connection.execute(
-                "SELECT * FROM cycles WHERE cycle_id = ?",
+                self._projection() + " WHERE c.cycle_id = ?",
                 (cycle_id,),
             ).fetchone()
             if row is None:
@@ -334,7 +345,7 @@ class CycleRepository:
         safe_limit = max(1, min(int(limit), 500))
         with self.database.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM cycles ORDER BY started_at DESC LIMIT ?",
+                self._projection() + " ORDER BY c.started_at DESC LIMIT ?",
                 (safe_limit,),
             ).fetchall()
         return [self._serialize(row) for row in rows]
@@ -355,6 +366,16 @@ class CycleRepository:
         return {row["destination"]: row["total"] for row in rows if row["destination"]}
 
     @staticmethod
+    def _projection():
+        return (
+            "SELECT c.*, (SELECT MIN(e.created_at) FROM cycle_events e WHERE e.cycle_id = c.cycle_id "
+            "AND e.event_type = 'GARRA_RETORNOU') AS arm_finished_at, "
+            "(SELECT m.marker_id FROM aruco_markers m WHERE m.product_id = c.product_id) AS aruco_id, "
+            "(SELECT json_extract(e.payload, '$.simulado') FROM cycle_events e WHERE e.cycle_id = c.cycle_id "
+            "AND e.event_type = 'MODO_OPERACAO' LIMIT 1) AS simulated FROM cycles c"
+        )
+
+    @staticmethod
     def _serialize(row) -> dict:
         return {
             "id": row["cycle_id"],
@@ -364,6 +385,11 @@ class CycleRepository:
             "destino": row["destination"],
             "estado": row["status"],
             "qr_code": row["qr_code"],
+            "aruco_id": row["aruco_id"],
+            "braco_concluido": row["arm_finished_at"] is not None,
+            "braco_finalizado_em": row["arm_finished_at"],
+            "transporte_estado": row["status"] if row["status"] in {"FINALIZADO", "TRANSPORTANDO", "ERRO", "PARADO"} else "AGUARDANDO",
+            "simulado": bool(row["simulated"]) if row["simulated"] is not None else None,
             "erro": (
                 {
                     "codigo": row["error_code"],

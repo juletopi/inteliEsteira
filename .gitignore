@@ -20,6 +20,11 @@ ev3/token.txt
 # local data
 data/*.db
 data/*.db-*
+# Arquivos de controle/gravacao atomica do cadastro JSON.
+data/*.json.lock
+data/.catalog-*.tmp
+output/*.json.lock
+output/.catalog-*.tmp
 
 # Ferramentas e resultados locais da bancada (nao sao firmware para gravar).
 output/arduino-toolchain/
@@ -32,6 +37,8 @@ output/test-tmp/
 output/test-*.log
 output/bancada*.db
 output/bancada*.db-*
+output/bancada*.json
+output/antes-json-automatico-*.db
 
 # OS
 .vscode/

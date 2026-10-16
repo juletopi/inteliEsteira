@@ -8,4 +8,5 @@ if __name__ == "__main__":
     try:
         app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
     finally:
+        app.extensions["camera_monitor"].shutdown()
         app.extensions["workflow"].shutdown()

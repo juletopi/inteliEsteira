@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from core.classifier import ClassificationError, classify_qr_code
 from hardware.device import HardwareError
-from vision.qrcode import CameraError
+from vision.aruco import CameraError
 
 
 class ControllerError(RuntimeError):
@@ -89,6 +89,19 @@ class SystemController:
 
         self.state.update(**self._connection_status())
 
+    def identify_camera_frame(self):
+        """Valida a etiqueta atual sem movimentar hardware ou registrar um ciclo."""
+        if not self._cycle_lock.acquire(blocking=False):
+            raise SystemBusyError("Existe um ciclo em processamento. Aguarde para testar a camera.")
+        try:
+            captured = self.camera.read_aruco(self.camera.capture_frame())
+            return classify_qr_code(
+                captured, self.products.resolve,
+                occupancy=self.cycles.destination_counts(),
+            )
+        finally:
+            self._cycle_lock.release()
+
     def process_next_product(self, *, qr_code=None, occupancy=None, unavailable=None,
                              identified_qr_code=None, expected_product_id=None, cycle_id=None,
                              on_identified=None, presence_confirmed=False, cancelled=None):
@@ -133,6 +146,10 @@ class SystemController:
 
             self.cycles.start(cycle_id, qr_code or "")
             cycle_recorded = True
+            self.cycles.add_event(cycle_id, "MODO_OPERACAO", {
+                "simulado": any(getattr(device, "mode", "mock") in {"mock", "simulator", "ev3_simulator"}
+                                for _name, device in self._hardware_devices()),
+            })
 
             self.state.transition(
                 "AGUARDANDO_OBJETO",
@@ -152,6 +169,7 @@ class SystemController:
             self.gripper.set_pickup_area(cycle_id, timeout=self.command_timeout, retries=self.command_retries)
             self.cycles.add_event(cycle_id, "AREA_COLETA_CONFIGURADA", {"area": self.gripper.pickup_zone})
             self.state.transition("PEGANDO_OBJETO")
+            self.cycles.set_status(cycle_id, "PEGANDO_OBJETO")
             for action, event, phase in ((self.gripper.pick_object, "OBJETO_COLETADO", None),
                                          (self.gripper.place_on_conveyor, "GARRA_POSICIONADA_SOBRE_ESTEIRA", "POSICIONANDO_OBJETO"),
                                          (self.gripper.release_object, "OBJETO_ENTREGUE_NA_ESTEIRA", "SOLTANDO_OBJETO"),
@@ -159,6 +177,7 @@ class SystemController:
                 self._ensure_not_stopped()
                 if phase:
                     self.state.transition(phase)
+                    self.cycles.set_status(cycle_id, phase)
                 response = action(cycle_id, timeout=self.command_timeout, retries=self.command_retries,
                                   event_timeout=self.gripper_timeout, cancelled=self._cancelled)
                 self.cycles.add_event(cycle_id, event, {"confirmacao": response.payload, "area": self.gripper.pickup_zone})
@@ -167,13 +186,14 @@ class SystemController:
             self._ensure_not_stopped()
             self.state.transition("OBJETO_POSICIONADO", garra="livre")
             self.cycles.add_event(cycle_id, "OBJETO_POSICIONADO")
-            self.state.transition("LENDO_QR")
-            captured_qr_code = identified_qr_code if identified_qr_code is not None else self.camera.scan_qrcode(
+            self.state.transition("LENDO_ARUCO")
+            self.cycles.set_status(cycle_id, "LENDO_ARUCO")
+            captured_qr_code = identified_qr_code if identified_qr_code is not None else self.camera.scan_aruco(
                 cancelled=self._cancelled)
             self.cycles.set_qr_code(cycle_id, captured_qr_code)
-            self.cycles.add_event(cycle_id, "QR_LIDO")
+            self.cycles.add_event(cycle_id, "ARUCO_LIDO")
             self._ensure_not_stopped()
-            self.state.transition("VALIDANDO_QR", qr_code=captured_qr_code)
+            self.state.transition("VALIDANDO_ARUCO", qr_code=captured_qr_code)
 
             decision = classify_qr_code(
                 captured_qr_code,

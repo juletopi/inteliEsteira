@@ -1,11 +1,11 @@
-"""Valida o QR Code e resolve o destino fisico de um produto.
+"""Valida o payload interno de identificacao e resolve o destino do produto.
 
-Contrato do QR Code::
+Payload do produto resolvido pelo marcador ArUco::
 
     {"produto_id": "PROD-0087"}
 
-O QR identifica somente o produto. A UF vem do cadastro persistente, evitando
-que o destino seja definido ou adulterado no proprio QR Code.
+O marcador identifica somente o produto. A UF vem do cadastro persistente.
+Nomes legados de funcoes/campos nao implicam leitura optica de QR Code.
 """
 
 from __future__ import annotations
@@ -161,24 +161,24 @@ def validate_state(raw_state: object) -> str:
 
 
 def read_product_id(qr_code: str) -> str:
-    """Extrai e valida o identificador presente no QR Code."""
+    """Extrai e valida o identificador no payload interno."""
 
     if not isinstance(qr_code, str):
-        raise InvalidQRCodeError("O QR Code deve ser uma string.")
+        raise InvalidQRCodeError("O payload de identificacao deve ser uma string.")
 
     qr_code = qr_code.strip()
     if not qr_code:
-        raise InvalidQRCodeError("O QR Code esta vazio.")
+        raise InvalidQRCodeError("O payload de identificacao esta vazio.")
     if len(qr_code) > MAX_QR_CODE_LENGTH:
-        raise InvalidQRCodeError("O QR Code excede o tamanho permitido.")
+        raise InvalidQRCodeError("O payload de identificacao excede o tamanho permitido.")
 
     try:
         payload = json.loads(qr_code)
     except json.JSONDecodeError as exc:
-        raise InvalidQRCodeError("O QR Code nao contem um JSON valido.") from exc
+        raise InvalidQRCodeError("O payload de identificacao nao contem um JSON valido.") from exc
 
     if not isinstance(payload, dict):
-        raise InvalidQRCodeError("O conteudo do QR Code deve ser um objeto JSON.")
+        raise InvalidQRCodeError("O payload de identificacao deve ser um objeto JSON.")
 
     raw_product_id = _read_alias(payload, ("produto_id", "product_id"), "produto_id")
     return validate_product_id(raw_product_id)
@@ -188,7 +188,7 @@ def identify_product(
     qr_code: str,
     product_resolver: Callable[[str], Mapping[str, object] | Product | None],
 ) -> Product:
-    """Consulta o cadastro e devolve o produto associado ao QR Code."""
+    """Consulta o cadastro e devolve o produto identificado."""
 
     product_id = read_product_id(qr_code)
     registered_product = product_resolver(product_id)

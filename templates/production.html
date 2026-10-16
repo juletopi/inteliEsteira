@@ -88,15 +88,16 @@
                 <thead>
                     <tr>
                         <th>Produto</th>
-                        <th>QR Code</th>
+                        <th>ArUco</th>
                         <th>Destino</th>
-                        <th>Status</th>
+                        <th>Braço</th>
+                        <th>Esteira</th>
                         <th>Processado em</th>
                     </tr>
                 </thead>
                 <tbody id="history-table-body">
                     <tr>
-                        <td colspan="5">
+                        <td colspan="6">
                             <div class="empty-state">
                                 <i class="bi bi-clock-history fs-3 d-block mb-2"></i>
                                 Nenhum produto registrado no histórico.
@@ -125,7 +126,7 @@
         if (!cycles.length) {
             $body.append(
                 $("<tr>").append(
-                    $("<td>", { colspan: 5 }).append(
+                    $("<td>", { colspan: 6 }).append(
                         $("<div>", { class: "empty-state" }).text(
                             "Nenhum produto registrado no histórico."
                         )
@@ -149,8 +150,11 @@
             $body.append(
                 $("<tr>").append(
                     $("<td>").text(cycle.produto_id || "Não identificado"),
-                    $("<td>").text(cycle.qr_code || "—"),
+                    $("<td>").text(cycle.aruco_id != null ? `ID ${cycle.aruco_id}` : "—"),
                     $("<td>").text(destination),
+                    $("<td>").append(cycle.braco_concluido ?
+                        $("<span>", {class: "status-pill"}).append($("<i>", {class: "bi bi-check-circle-fill", "aria-hidden": "true"}), document.createTextNode(" Concluído")) :
+                        document.createTextNode("Não concluído")),
                     $("<td>").append($status),
                     $("<td>").text(formatDate(cycle.finalizado_em || cycle.iniciado_em))
                 )
@@ -171,7 +175,7 @@
         loadHistory().catch((error) => {
             $("#history-table-body").html(
                 $("<tr>").append(
-                    $("<td>", { colspan: 5 }).append(
+                    $("<td>", { colspan: 6 }).append(
                         $("<div>", { class: "empty-state" }).text(error.message)
                     )
                 )
