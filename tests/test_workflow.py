@@ -141,14 +141,20 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("ESTEIRA:START", self.commands())
         self.assertFalse(self.released())
 
-    def test_unknown_label_leaves_cube_on_stopped_belt_and_blocks_next_pickup(self):
+    def test_unknown_label_waits_for_operator_discard_before_next_pickup(self):
         self.start()
         self.present("UNKNOWN")
-        self.wait_for(lambda: not self.flow.running())
+        self.wait_for(lambda: self.flow.snapshot()["fluxo"]["aguardando_leitura"])
+        self.assertTrue(self.flow.running())
         self.assertTrue(self.released())
         self.assertNotIn("ESTEIRA:START", self.commands())
-        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
+        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "LENDO_ARUCO")
         self.assertEqual(self.client.post("/api/flow/start").status_code, 409)
+        self.assertEqual(self.client.post("/api/flow/discard").status_code, 200)
+        self.wait_for(lambda: self.flow.snapshot()["proxima_caixa_liberada"])
+        self.present("FIRST")
+        self.wait_for(lambda: self.app.extensions["cycle_repository"].count_completed() == 1)
+        self.assertEqual(self.flow.snapshot()["itens"][0]["produto_id"], "FIRST")
 
     def test_missing_conveyor_completion_does_not_finish_or_accept_next_unit(self):
         self.start()

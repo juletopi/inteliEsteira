@@ -44,6 +44,7 @@ class IntegratedContractTests(unittest.TestCase):
         product = products.ensure_aruco("CUBO-SUL")
         marker = cv2.imdecode(np.frombuffer(generate_aruco_png(product["aruco_id"]), np.uint8), cv2.IMREAD_COLOR)
         self.frame = marker
+        self.valid_frame = marker.copy()
         camera = ArucoCamera(aruco_resolver=products.resolve_aruco, scan_timeout=0.15, retry_interval=0.01)
         camera.capture_frame = lambda: self.frame.copy()
         camera.is_connected = lambda: True
@@ -104,14 +105,18 @@ class IntegratedContractTests(unittest.TestCase):
         self.assertLess(events.index("OBJETO_ENTREGUE_NA_ESTEIRA"), events.index("ARUCO_LIDO"))
         self.assertLess(events.index("ARUCO_LIDO"), events.index("ESTEIRA_INICIADA"))
 
-    def test_missing_marker_blocks_belt_after_gripper_completes(self):
+    def test_missing_marker_waits_for_label_then_continues_to_belt(self):
         self.frame = np.full_like(self.frame, 255)
         self.start_with_fresh_presence()
-        self.wait_for(lambda: not self.flow.running())
-        self.assertEqual(self.flow.snapshot()["fluxo"]["erro"]["codigo"], "ARUCO_NOT_FOUND")
+        self.wait_for(lambda: self.flow.snapshot()["fluxo"]["aguardando_leitura"])
+        self.assertTrue(self.flow.running())
         commands = [parse_message(frame).payload for frame in self.app.extensions["conveyor_device"].command_log]
         self.assertNotIn("ESTEIRA:START", commands)
         self.assertTrue(self.controller.cycles.list_recent()[0]["braco_concluido"])
+        self.frame = self.valid_frame
+        self.wait_for(lambda: self.controller.cycles.count_completed() == 1)
+        commands = [parse_message(frame).payload for frame in self.app.extensions["conveyor_device"].command_log]
+        self.assertIn("ESTEIRA:START", commands)
 
     def test_passive_camera_read_does_not_start_a_physical_cycle(self):
         decision = self.controller.identify_camera_frame()
