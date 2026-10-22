@@ -31,6 +31,10 @@ class CycleStoppedError(ControllerError):
     code = "CYCLE_STOPPED"
 
 
+class UnitDiscardedError(ControllerError):
+    code = "UNIDADE_DESCARTADA"
+
+
 class CycleProcessingError(ControllerError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -88,6 +92,8 @@ class SystemController:
         self.gripper_firmware_status = None
         self._cycle_lock = Lock()
         self._stop_requested = Event()
+        self._discard_requested = Event()
+        self._reading_wait = False
         self._external_cancelled = None
 
         self.state.update(**self._connection_status())
@@ -107,7 +113,8 @@ class SystemController:
 
     def process_next_product(self, *, qr_code=None, occupancy=None, unavailable=None,
                              identified_qr_code=None, expected_product_id=None, cycle_id=None,
-                             on_identified=None, presence_confirmed=False, cancelled=None):
+                             on_identified=None, presence_confirmed=False, cancelled=None,
+                             on_read_retry=None):
         if not self._cycle_lock.acquire(blocking=False):
             raise SystemBusyError("Ja existe um ciclo em processamento.")
 
@@ -116,6 +123,7 @@ class SystemController:
         try:
             self._external_cancelled = cancelled
             self._stop_requested.clear()
+            self._discard_requested.clear()
             self._ensure_not_stopped()
             current_state = self.state.snapshot()["estado"]
             if current_state == "ERRO":
@@ -243,21 +251,8 @@ class SystemController:
             self.cycles.add_event(cycle_id, "OBJETO_POSICIONADO")
             self.state.transition("LENDO_ARUCO")
             self.cycles.set_status(cycle_id, "LENDO_ARUCO")
-            captured_qr_code = identified_qr_code if identified_qr_code is not None else self.camera.scan_aruco(
-                cancelled=self._cancelled)
-            self.cycles.set_qr_code(cycle_id, captured_qr_code)
-            self.cycles.add_event(cycle_id, "ARUCO_LIDO")
-            self._ensure_not_stopped()
-            self.state.transition("VALIDANDO_ARUCO", qr_code=captured_qr_code)
-
-            decision = classify_qr_code(
-                captured_qr_code,
-                self.products.resolve,
-                occupancy=occupancy,
-                unavailable=unavailable,
-            )
-            if expected_product_id is not None and decision.product.product_id.lower() != expected_product_id.lower():
-                raise ClassificationError(f"Esperado {expected_product_id}; a camera identificou {decision.product.product_id}.")
+            captured_qr_code, decision = self._identify_on_belt(
+                cycle_id, identified_qr_code, occupancy, unavailable, expected_product_id, on_read_retry)
             self._ensure_not_stopped()
             self.state.transition(
                 "DESTINO_DEFINIDO",
@@ -355,6 +350,11 @@ class SystemController:
             if cycle_recorded:
                 self.cycles.fail(cycle_id, code, message)
             raise CycleProcessingError(code, message) from exc
+        except UnitDiscardedError as exc:
+            # O operador retirou o cubo da esteira: nada foi enviado ao EV3.
+            self.cycles.fail(cycle_id, exc.code, exc.message)
+            self.state.reset(**self._connection_status())
+            raise
         except ControllerError:
             raise
         except Exception as exc:
@@ -370,8 +370,56 @@ class SystemController:
             raise CycleProcessingError("UNEXPECTED_ERROR", str(exc)) from exc
         finally:
             self._external_cancelled = None
+            self._reading_wait = False
             self.state.update(**self._connection_status())
             self._cycle_lock.release()
+
+    def _identify_on_belt(self, cycle_id, identified_qr_code, occupancy, unavailable,
+                          expected_product_id, on_read_retry):
+        """Le e classifica o ArUco do cubo ja entregue na esteira.
+
+        Com on_read_retry (operacao automatica), uma leitura falha nao derruba o fluxo:
+        tenta de novo ate o operador corrigir a etiqueta, cadastrar o marcador ou
+        descartar a unidade. Sem ele, a primeira falha encerra o ciclo.
+        """
+        reported = False
+        while True:
+            self._ensure_not_stopped()
+            if self._discard_requested.is_set():
+                raise UnitDiscardedError("Unidade descartada pelo operador; a esteira nao foi acionada.")
+            try:
+                captured = identified_qr_code if identified_qr_code is not None else self.camera.scan_aruco(
+                    cancelled=lambda: self._cancelled() or self._discard_requested.is_set())
+                decision = classify_qr_code(captured, self.products.resolve,
+                                            occupancy=occupancy, unavailable=unavailable)
+                if expected_product_id is not None and decision.product.product_id.lower() != expected_product_id.lower():
+                    raise ClassificationError(f"Esperado {expected_product_id}; a camera identificou {decision.product.product_id}.")
+            except (CameraError, ClassificationError) as exc:
+                if on_read_retry is None or identified_qr_code is not None:
+                    raise
+                if self._discard_requested.is_set() or self._cancelled():
+                    continue
+                message = getattr(exc, "message", str(exc))
+                if not reported:
+                    self.cycles.add_event(cycle_id, "LEITURA_PENDENTE", {"codigo": getattr(exc, "code", "CAMERA_ERROR"),
+                                                                         "mensagem": message})
+                    reported = True
+                self._reading_wait = True
+                on_read_retry(getattr(exc, "code", "CAMERA_ERROR"), message)
+                continue
+            self._reading_wait = False
+            self.cycles.set_qr_code(cycle_id, captured)
+            self.cycles.add_event(cycle_id, "ARUCO_LIDO")
+            self._ensure_not_stopped()
+            self.state.transition("VALIDANDO_ARUCO", qr_code=captured)
+            return captured, decision
+
+    def discard_waiting_unit(self):
+        """Encerra a unidade parada na leitura (cubo retirado da esteira pelo operador)."""
+        if not self._reading_wait:
+            raise SystemBusyError("Nenhuma unidade aguardando leitura do ArUco.")
+        self._discard_requested.set()
+        return {"descartada": True}
 
     def ensure_operation_ready(self):
         if self.require_physical_arrival and getattr(self.conveyor.device, "mode", "mock") == "ev3":

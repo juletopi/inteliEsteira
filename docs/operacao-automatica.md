@@ -71,14 +71,21 @@ Não feche a janela "InteliEsteira backend": fechar a janela encerra o backend. 
 
 ## Quando algo para
 
-Falhas durante um cubo param em **ERRO** de propósito: o cubo pode estar na garra ou na
-esteira. Retire/reposicione o cubo e use **Resetar operação** → **Iniciar operação**.
+**Leitura do ArUco falhou** (cubo na esteira sem etiqueta legível, marcador sem cadastro):
+o fluxo **não trava**. A fila mostra "Leitura do ArUco pendente" e continua tentando ler.
+Não use Parar/Resetar: ajuste a etiqueta do cubo na esteira (ou cadastre o marcador em
+**Produtos**) e o fluxo segue sozinho para o destino. Para desistir do cubo, retire-o da
+esteira e clique em **Descartar unidade**: o fluxo volta a aguardar o sensor.
+
+Outras falhas durante um cubo (comunicação, movimento) param em **ERRO** de propósito: o
+cubo pode estar na garra. Retire/reposicione o cubo e use **Resetar operação** →
+**Iniciar operação**.
 
 | Sintoma | Causa provável | O que fazer |
 | --- | --- | --- |
-| `ARUCO_NOT_FOUND` e o sensor ainda vê o cubo | Garra fechou fora do cubo | Reposicionar o cubo no batente; se persistir, recalibrar o passo "colado" |
-| `ARUCO_NOT_FOUND` com o cubo na esteira | Etiqueta suja, virada ou fora da área da câmera | Ajustar o cubo/etiqueta e resetar |
-| `ARUCO_NOT_REGISTERED` | ArUco sem produto no catálogo | Cadastrar o marcador em **Produtos** |
+| Leitura pendente e o sensor ainda vê o cubo na coleta | Garra fechou fora do cubo | Colocar o cubo na esteira (segue sozinho) ou **Descartar unidade**; reposicionar no batente |
+| Leitura pendente com o cubo na esteira | Etiqueta suja, virada ou fora da área da câmera | Ajustar o cubo/etiqueta; o fluxo segue sozinho |
+| Leitura pendente "não está vinculado a um produto" | ArUco sem produto no catálogo | Cadastrar o marcador em **Produtos** ou **Descartar unidade** |
 | "Cubo detectado" com a área vazia | Fundo dentro do limite do sensor | Ver "agora X cm" no Dashboard; limite ≤ fundo − 3 cm no calibrador |
 | Fluxo em **Aguardando conexão** | Arduino, EV3 ou câmera fora | Ele reconecta sozinho a cada 2 s; ver o aviso na fila |
 | EV3 não conecta | Ponte parada ou EV3 fora da rede | `ping 192.168.137.3`; rodar `scripts\instalar-ev3.ps1` de novo |

@@ -355,6 +355,7 @@
                         <button id="flow-stop" class="btn btn-outline-danger"><i class="bi bi-stop-fill" aria-hidden="true"></i> Parar</button>
                         <button id="flow-reset" class="btn btn-outline-secondary" disabled><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Resetar operação</button>
                         <button id="flow-sync-neutral" class="btn btn-outline-secondary" disabled><i class="bi bi-crosshair" aria-hidden="true"></i> Confirmar braço no neutro</button>
+                        <button id="flow-discard" class="btn btn-warning d-none"><i class="bi bi-trash" aria-hidden="true"></i> Descartar unidade</button>
                         <button id="flow-release-servos" class="btn btn-outline-secondary" disabled><i class="bi bi-unlock" aria-hidden="true"></i> Soltar servos</button>
                     </div>
                     <p id="flow-guidance" class="small text-secondary" role="status"></p>
@@ -594,6 +595,7 @@
             $("#flow-reset").prop("disabled", flowActionPending || flow.ativo || data.calibracao_ativa);
             $("#flow-sync-neutral").prop("disabled", flowActionPending || !data.arduino || Boolean(flow.ciclo_id) || data.calibracao_ativa);
             $("#flow-release-servos").prop("disabled", flowActionPending || !data.arduino || flow.ativo || data.calibracao_ativa);
+            $("#flow-discard").toggleClass("d-none", !flow.aguardando_leitura);
             const profile = data.fila.perfil_garra;
             const profileHint = profile ? `Perfil ${profile.versao} · ${profile.passos_pegar} passos para pegar e ${profile.passos_entregar} para entregar.` : 'Perfil de movimento indisponível.';
             $("#flow-guidance").text(data.calibracao_ativa ? 'Encerre a calibração para devolver o Arduino à operação. ' + profileHint :
@@ -653,6 +655,11 @@
         $("#flow-reset").on('click', () => controlFlow('/api/system/reset'));
         $("#flow-sync-neutral").on('click', confirmNeutralPose);
         $("#flow-release-servos").on('click', releaseServos);
+        $("#flow-discard").on('click', function () {
+            if (window.confirm("Retire o cubo da esteira antes de confirmar. A unidade será descartada e o fluxo volta a aguardar o sensor.")) {
+                controlFlow('/api/flow/discard');
+            }
+        });
         $("#camera-expand-button").on("click", async function () {
             const preview = document.getElementById("camera-preview");
             try {

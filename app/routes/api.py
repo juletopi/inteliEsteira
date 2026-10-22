@@ -573,6 +573,15 @@ def confirm_neutral_pose():
                     "mensagem": "Referência lógica atualizada. O firmware não moveu os servos."})
 
 
+@api_bp.post("/flow/discard")
+def discard_waiting_unit():
+    try:
+        result = current_app.extensions["system_controller"].discard_waiting_unit()
+    except ControllerError as exc:
+        return _error_response(exc.code, exc.message, 409)
+    return jsonify({"ok": True, **result, "mensagem": "Unidade descartada; o fluxo volta a aguardar o sensor."})
+
+
 @api_bp.post("/sensor/leitura")
 def read_presence_sensor():
     app = current_app

@@ -3,7 +3,7 @@
 from threading import Event, RLock, Thread
 from uuid import uuid4
 
-from core.controller import ControllerError
+from core.controller import ControllerError, UnitDiscardedError
 from hardware.device import HardwareError
 from storage.queue import QueueError
 from vision.aruco import CameraError
@@ -202,7 +202,7 @@ class Workflow:
                 if self._reconnect.is_set():
                     continue
                 self.repository.set_info(owner, estado="AGUARDANDO_SENSOR", ciclo_id=None, detectado=None,
-                                         aviso=self._sensor_warning)
+                                         aviso=self._sensor_warning, aguardando_leitura=False)
                 present = self.sensor.wait_present(cursor, timeout=0.5, cancelled=waiting_cancelled)
                 if present is None:
                     continue
@@ -215,14 +215,27 @@ class Workflow:
                 def identified(cycle, decision):
                     nonlocal active_job
                     active_job = self.repository.detected(owner, decision.product.product_id, cycle)
-                    self.repository.set_info(owner, detectado=decision.product.product_id)
+                    self.repository.set_info(owner, detectado=decision.product.product_id,
+                                             aguardando_leitura=False, aviso=None)
 
-                self.controller.process_next_product(
-                    cycle_id=cycle_id, presence_confirmed=True, on_identified=identified,
-                    occupancy=self.controller.cycles.destination_counts(),
-                    cancelled=self._stop.is_set,
-                )
-                self.repository.finish(owner, active_job, "FINALIZADO")
+                def read_retry(code, message):
+                    # O cubo esta parado na esteira; o fluxo espera em vez de cair em ERRO.
+                    self.repository.set_info(
+                        owner, aguardando_leitura=True,
+                        aviso=f"Leitura do ArUco pendente ({message}) Ajuste a etiqueta do cubo na esteira e o "
+                              "fluxo segue sozinho, ou retire o cubo e use 'Descartar unidade'.")
+
+                try:
+                    self.controller.process_next_product(
+                        cycle_id=cycle_id, presence_confirmed=True, on_identified=identified,
+                        occupancy=self.controller.cycles.destination_counts(),
+                        cancelled=self._stop.is_set, on_read_retry=read_retry,
+                    )
+                except UnitDiscardedError:
+                    self.repository.set_info(owner, aguardando_leitura=False, detectado=None,
+                                             aviso="Unidade descartada; aguardando o próximo cubo.")
+                else:
+                    self.repository.finish(owner, active_job, "FINALIZADO")
                 active_job = None
                 profile = self.profile_provider() if self.profile_provider else None
                 if profile and not profile["repeat"]:
