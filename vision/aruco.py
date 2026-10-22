@@ -72,6 +72,7 @@ class ArucoCamera:
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_250)
         self._aruco_detector = aruco.ArucoDetector(dictionary)
         self._capture = None
+        self._connected = False
         self._lock = RLock()
         self._last_qr_code = None
         self._last_qr_time = 0.0
@@ -95,11 +96,13 @@ class ArucoCamera:
                 if capture is not None:
                     capture.release()
                 self._capture = None
+                self._connected = False
                 return False
 
             capture.set(self._cv2.CAP_PROP_FRAME_WIDTH, self.width)
             capture.set(self._cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self._capture = capture
+            self._connected = True
             return True
 
     def disconnect(self) -> None:
@@ -107,6 +110,7 @@ class ArucoCamera:
             if self._capture is not None:
                 self._capture.release()
             self._capture = None
+            self._connected = False
 
     def capture_frame(self):
         with self._lock:
@@ -224,17 +228,23 @@ class ArucoCamera:
         return self.encode_jpeg(frame, quality=quality)
 
     def is_connected(self) -> bool:
-        with self._lock:
-            return self._capture is not None and self._capture.isOpened()
+        # Status polling must not wait for a camera read while its lock is held.
+        return self._connected
 
     def resolution(self) -> dict[str, int] | None:
-        with self._lock:
-            if self._capture is None or not self._capture.isOpened():
+        # Return quickly when a capture is in progress; the configured size is
+        # still useful to the UI and avoids blocking the whole Flask request.
+        if not self._lock.acquire(blocking=False):
+            return {"largura": self.width, "altura": self.height} if self._connected else None
+        try:
+            if not self._connected or self._capture is None:
                 return None
             return {
                 "largura": int(self._capture.get(self._cv2.CAP_PROP_FRAME_WIDTH)),
                 "altura": int(self._capture.get(self._cv2.CAP_PROP_FRAME_HEIGHT)),
             }
+        finally:
+            self._lock.release()
 
 
 def build_product_payload(product_id: str) -> str:

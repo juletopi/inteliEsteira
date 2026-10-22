@@ -3,10 +3,8 @@
 
 try:
     import usocket as socket
-    import uselect as select
 except ImportError:
     import socket
-    import select
 
 # MicroPython pode nao definir __package__ ao executar um arquivo diretamente.
 if globals().get("__package__"):
@@ -31,21 +29,48 @@ def default_clock():
         return lambda: watch.time() / 1000.0
 
 
+def send_bytes(connection, payload):
+    """Envia todos os bytes sem depender de socket.sendall (ausente no EV3)."""
+    while payload:
+        sent = connection.send(payload)
+        if sent is None or sent <= 0:
+            raise OSError("SOCKET_SEND_FAILED")
+        payload = payload[sent:]
+
+
+def receive_timed_out(error):
+    timeout_type = getattr(socket, "timeout", None)
+    if timeout_type is not None and isinstance(error, timeout_type):
+        return True
+    # MicroPython sinaliza timeout como OSError com errno; Windows pode usar
+    # WSAEWOULDBLOCK/WSAETIMEDOUT. Reset e descritor fechado sao falhas reais.
+    code = getattr(error, "errno", None)
+    if code is None and error.args:
+        code = error.args[0]
+    return code in (11, 110, 10035, 10060)
+
+
 def serve_client(connection, bridge, token, *, clock=None, watchdog=4.0):
     """Uma sessao, um controller e polling de movimento a cada 20 ms."""
     validate_token(token)
     clock = clock or default_clock()
-    connection.settimeout(0.2)
+    # O MicroPython do EV3 nao implementa select.select. Um timeout curto no
+    # proprio socket permite receber comandos e continuar consultando o motor.
+    connection.settimeout(0.02)
     buffer = b""
     authenticated = False
     last_received = clock()
     try:
         while clock() - last_received < watchdog:
-            readable, _writable, _exceptional = select.select([connection], [], [], 0.02)
-            if readable:
+            try:
                 data = connection.recv(512)
-                if not data:
-                    return
+            except OSError as error:
+                if not receive_timed_out(error):
+                    raise
+                data = None
+            if data == b"":
+                return
+            if data:
                 buffer += data
                 while b"\n" in buffer:
                     raw, buffer = buffer.split(b"\n", 1)
@@ -54,7 +79,7 @@ def serve_client(connection, bridge, token, *, clock=None, watchdog=4.0):
                     line = raw.decode("utf-8").strip()
                     if not authenticated:
                         if line != "AUTH:" + token:
-                            connection.sendall(b"ERROR:AUTH\n")
+                            send_bytes(connection, b"ERROR:AUTH\n")
                             return
                         authenticated = True
                         responses = ["READY:EV3"]
@@ -64,12 +89,12 @@ def serve_client(connection, bridge, token, *, clock=None, watchdog=4.0):
                         responses = bridge.handle(line)
                     last_received = clock()
                     for response in responses:
-                        connection.sendall((response + "\n").encode("utf-8"))
+                        send_bytes(connection, (response + "\n").encode("utf-8"))
                 if len(buffer) > 512:
                     raise ValueError("FRAME_TOO_LONG")
             if authenticated:
                 for response in bridge.poll():
-                    connection.sendall((response + "\n").encode("utf-8"))
+                    send_bytes(connection, (response + "\n").encode("utf-8"))
     finally:
         try:
             if authenticated:

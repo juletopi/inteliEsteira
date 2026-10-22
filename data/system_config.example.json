@@ -1,0 +1,14 @@
+{
+  "HARDWARE_MODE": "serial",
+  "ARDUINO_PORT": "COM3",
+  "ARDUINO_BAUDRATE": 9600,
+  "CONVEYOR_MODE": "ev3",
+  "EV3_HOST": "192.168.137.3",
+  "EV3_PORT": 8765,
+  "EV3_TOKEN": "<mesmo conteudo de ev3/token.txt>",
+  "CAMERA_MODE": "opencv",
+  "CAMERA_INDEX": 0,
+  "GRIPPER_PROFILE_CALIBRATED": true,
+  "AUTO_OPERATION": true,
+  "AUTO_SYNC_NEUTRAL": true
+}

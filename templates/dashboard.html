@@ -350,6 +350,15 @@
                         <span id="queue-count" class="small text-secondary">0 unidades</span>
                     </div>
                     <div id="queue-notice" class="alert alert-info py-2" role="status" aria-live="polite">Aguardando conexão dos dispositivos.</div>
+                    <div class="d-flex gap-2 flex-wrap mb-3" aria-label="Controle da operação">
+                        <button id="flow-start" class="btn btn-primary" disabled><i class="bi bi-play-fill" aria-hidden="true"></i> Iniciar operação</button>
+                        <button id="flow-stop" class="btn btn-outline-danger"><i class="bi bi-stop-fill" aria-hidden="true"></i> Parar</button>
+                        <button id="flow-reset" class="btn btn-outline-secondary" disabled><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Resetar operação</button>
+                        <button id="flow-sync-neutral" class="btn btn-outline-secondary" disabled><i class="bi bi-crosshair" aria-hidden="true"></i> Confirmar braço no neutro</button>
+                        <button id="flow-release-servos" class="btn btn-outline-secondary" disabled><i class="bi bi-unlock" aria-hidden="true"></i> Soltar servos</button>
+                    </div>
+                    <p id="flow-guidance" class="small text-secondary" role="status"></p>
+                    <div id="flow-action-error" class="alert alert-danger d-none" role="alert"></div>
                     <div class="table-responsive mb-3">
                         <table class="table table-sm align-middle automatic-queue-table">
                             <thead><tr><th>Unidade</th><th>Produto</th><th>Região</th><th>Destino</th><th>Braço</th><th>Esteira</th></tr></thead>
@@ -405,6 +414,7 @@
     let refreshing = false;
     let previewLoading = false;
     let previewTimeout = null;
+    let flowActionPending = false;
 
     function setFeedback(message) {
         $("#system-alert").removeClass("d-none");
@@ -425,7 +435,53 @@
             OBJETO_POSICIONADO: "Cubo na esteira", LENDO_ARUCO: "Identificando ArUco",
             VALIDANDO_ARUCO: "Validando cadastro", DESTINO_DEFINIDO: "Destino definido",
             TRANSPORTANDO: "Em transporte", FINALIZADO: "Concluída", ERRO: "Erro",
-            INTERROMPIDO: "Interrompida", PARADO: "Parado"};
+            INTERROMPIDO: "Interrompida", PARADO: "Parado", PRONTO: "Pronto para iniciar"};
+
+    async function controlFlow(endpoint) {
+        if (flowActionPending && endpoint !== '/api/system/stop') return;
+        flowActionPending = true;
+        $("#flow-action-error").addClass("d-none").empty();
+        $("#flow-start, #flow-reset").prop("disabled", true);
+        try {
+            await apiRequest(endpoint, {method: 'POST'});
+        } catch (error) {
+            $("#flow-action-error").removeClass("d-none").text(error.message);
+        } finally {
+            flowActionPending = false;
+            updateStatus().catch(error => setFeedback(error.message));
+        }
+    }
+
+    async function confirmNeutralPose() {
+        const confirmed = window.confirm("Coloque o braço manualmente no ponto neutro mostrado no perfil salvo. Confirme somente quando ele estiver nessa posição e com os servos soltos. O comando não movimenta o braço.");
+        if (!confirmed) return;
+        const button = $("#flow-sync-neutral");
+        button.prop("disabled", true);
+        $("#flow-action-error").removeClass("d-none alert-danger").addClass("alert-info").text("Confirmando a referência com o Arduino…");
+        try {
+            const result = await apiRequest("{{ url_for('api.confirm_neutral_pose') }}", {method: "POST"});
+            $("#flow-action-error").removeClass("alert-info alert-danger").addClass("alert-success")
+                .text(`${result.mensagem} Neutro B${result.pose.B} A${result.pose.A} C${result.pose.C} G${result.pose.G}.`);
+        } catch (error) {
+            $("#flow-action-error").removeClass("alert-info alert-success").addClass("alert-danger").text(error.message);
+        } finally {
+            updateStatus().catch(error => setFeedback(error.message));
+        }
+    }
+
+    async function releaseServos() {
+        const confirmed = window.confirm("Os 4 servos serão desenergizados e o braço pode cair. Segure o braço antes de confirmar. Depois, alinhe-o no ponto neutro e use “Confirmar braço no neutro”.");
+        if (!confirmed) return;
+        $("#flow-release-servos").prop("disabled", true);
+        try {
+            const result = await apiRequest("{{ url_for('api.release_servos') }}", {method: "POST"});
+            $("#flow-action-error").removeClass("d-none alert-danger alert-info").addClass("alert-success").text(result.mensagem);
+        } catch (error) {
+            $("#flow-action-error").removeClass("d-none alert-info alert-success").addClass("alert-danger").text(error.message);
+        } finally {
+            updateStatus().catch(error => setFeedback(error.message));
+        }
+    }
 
     function renderQueue(snapshot) {
         const queueItems = snapshot.itens || [];
@@ -531,10 +587,35 @@
             currentCameraConnected = Boolean(data.camera);
             renderQueue(data.fila);
             renderProduction(data);
+            const flow = data.fila.fluxo;
+            const needsReset = ['PARADO', 'ERRO', 'INTERROMPIDO'].includes(flow.estado)
+                || ['PARADO', 'ERRO'].includes(data.estado);
+            $("#flow-start").prop("disabled", flowActionPending || flow.ativo || needsReset || data.calibracao_ativa);
+            $("#flow-reset").prop("disabled", flowActionPending || flow.ativo || data.calibracao_ativa);
+            $("#flow-sync-neutral").prop("disabled", flowActionPending || !data.arduino || Boolean(flow.ciclo_id) || data.calibracao_ativa);
+            $("#flow-release-servos").prop("disabled", flowActionPending || !data.arduino || flow.ativo || data.calibracao_ativa);
+            const profile = data.fila.perfil_garra;
+            const profileHint = profile ? `Perfil ${profile.versao} · ${profile.passos_pegar} passos para pegar e ${profile.passos_entregar} para entregar.` : 'Perfil de movimento indisponível.';
+            $("#flow-guidance").text(data.calibracao_ativa ? 'Encerre a calibração para devolver o Arduino à operação. ' + profileHint :
+                needsReset ? 'Operação bloqueada. Inspecione a posição do cubo, resete e inicie novamente.' :
+                flow.aviso ? `${flow.aviso} ${profileHint}` :
+                !flow.ativo ? `Inicie a operação para habilitar sensor → garra → leitura do ArUco → esteira. ${profileHint}` :
+                flow.estado === 'AGUARDANDO_SENSOR' ? 'Aguardando uma nova confirmação do HC-SR04. A leitura da câmera só define o destino após a entrega do cubo.' :
+                `Operação em andamento. Acompanhe a etapa e os avisos acima. ${profileHint}`);
             const sensor = data.fila.sensor || {};
-            $("#presence-status").toggleClass("badge-offline", sensor.presente === null || sensor.presente === undefined)
-                .text(sensor.presente === true ? `Cubo detectado · ${sensor.distancia_cm} cm` :
-                    sensor.presente === false ? "Área livre" : "Aguardando sensor");
+            const limit = data.fila.perfil_garra?.sensor_limite_cm;
+            const live = sensor.distancia_atual_cm === null || sensor.distancia_atual_cm === undefined ? null :
+                `agora ${sensor.distancia_atual_cm} cm`;
+            const liveText = [live, limit ? `limite ${limit} cm` : null].filter(Boolean).join(" · ");
+            // Sem evento desde o rearme, a distancia ao vivo diz se a area esta livre ou contando.
+            const now = sensor.distancia_atual_cm;
+            const known = now !== null && now !== undefined;
+            const liveState = !known || !limit ? null : now <= limit ? "Detectando…" : now > limit + 2 ? "Área livre" : null;
+            $("#presence-status").toggleClass("badge-offline", sensor.presente !== true && sensor.presente !== false && !liveState)
+                .text((sensor.conectado === false ? "Arduino desconectado" : sensor.presente === true ? "Cubo detectado" :
+                    sensor.presente === false ? "Área livre" : liveState || "Aguardando sensor")
+                    + (sensor.conectado !== false && liveText ? ` · ${liveText}` : ""))
+                .attr('title', sensor.recebido_em ? `Último evento do sensor: ${new Date(sensor.recebido_em).toLocaleString()}` : 'Sem evento válido do sensor nesta conexão');
             for (const [selector, connected, mode, state] of [
                 ["#gripper-status", data.arduino, data.hardware_modo, data.garra],
                 ["#conveyor-status", data.esteira_conectada, data.esteira_modo, data.esteira]]) {
@@ -547,7 +628,7 @@
             $("#camera-status").toggleClass("badge-offline", !data.camera).text(data.camera ? cameraLabel : "Desconectada");
             $("#connected-components").text(Number(data.arduino) + Number(data.esteira_conectada) + Number(data.camera));
             $("#packages-count").text(data.total_ciclos || 0);
-            const phase = data.fila.fluxo.ativo ? data.fila.fluxo.estado : data.estado;
+            const phase = data.fila.fluxo.estado || data.estado;
             $("#system-state-metric").text(labels[phase] || phase.replaceAll("_", " "));
             $("#current-product").text(data.produto || "—");
             $("#current-state").text(data.uf || "—");
@@ -567,6 +648,11 @@
     }
 
     $(function () {
+        $("#flow-start").on('click', () => controlFlow('/api/flow/start'));
+        $("#flow-stop").on('click', () => controlFlow('/api/system/stop'));
+        $("#flow-reset").on('click', () => controlFlow('/api/system/reset'));
+        $("#flow-sync-neutral").on('click', confirmNeutralPose);
+        $("#flow-release-servos").on('click', releaseServos);
         $("#camera-expand-button").on("click", async function () {
             const preview = document.getElementById("camera-preview");
             try {

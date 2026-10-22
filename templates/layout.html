@@ -94,6 +94,10 @@
             background: var(--teal);
         }
 
+        .main-navbar.theme-calibration .nav-item.active {
+            background: #547f86;
+        }
+
         .main-navbar.theme-production .nav-item.active {
             background: var(--orange);
         }
@@ -202,6 +206,12 @@
                {% if request.endpoint == 'pages.connection' %}aria-current="page"{% endif %}>
                 <i class="bi bi-usb-plug-fill" aria-hidden="true"></i>
                 <span>Conexão</span>
+            </a>
+            <a class="nav-item theme-calibration {% if request.endpoint == 'pages.calibration' %}active{% endif %}"
+               href="{{ url_for('pages.calibration') }}"
+               {% if request.endpoint == 'pages.calibration' %}aria-current="page"{% endif %}>
+                <i class="bi bi-sliders2-vertical" aria-hidden="true"></i>
+                <span>Calibração</span>
             </a>
             <a class="nav-item theme-production {% if request.endpoint == 'pages.production' %}active{% endif %}"
                href="{{ url_for('pages.production') }}"

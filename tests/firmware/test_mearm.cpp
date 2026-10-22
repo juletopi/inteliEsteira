@@ -28,10 +28,21 @@ void fixture() {
   processarComando("AUTO:VALIDAR");
   check(backendCalibracaoValida(), "calibracao original nao foi validada");
   processarComando("CMD:DIAG:SISTEMA:RESET");
+  // Boot sem referencia: o operador confirma o neutro com os servos soltos.
+  processarComando("CMD:POSE_SYNC:SISTEMA:SYNC:88:83:84:149");
+  check(poseReferenciaConfirmada, "SYNC do neutro salvo foi recusado");
   hostOnDelay = heartbeat;
   Serial.clear();
 }
-void area() { processarComando("CMD:unit_1:GARRA:AREA:P01"); }
+// O backend sempre envia o perfil antes de reservar a area de coleta.
+void area() { processarComando("CMD:unit_1:GARRA:PERFIL:2:2:24"); processarComando("CMD:unit_1:GARRA:AREA:P01"); }
+// Fluxo coletivo: perfil do calibrador enviado passo a passo pelo backend.
+void profileArea() { area(); }
+const char *PROFILE_STEPS[] = {"P:1:130:95:90:150:300", "P:2:130:95:90:87:300",
+                               "E:1:35:100:92:87:300", "E:2:88:83:84:149:0"};
+void profileStep(int index) {
+  processarComando((std::string("CMD:unit_1:GARRA:PASSO:") + PROFILE_STEPS[index]).c_str());
+}
 void pickup() { processarComando("CMD:unit_1:GARRA:PEGAR"); }
 void fullCycle() {
   area(); pickup();
@@ -47,7 +58,7 @@ int main(int argc, char **argv) {
     check(argc == 2, "informe o cenario");
     std::string scenario = argv[1];
     if (scenario == "unvalidated") {
-      setup(); processarComando("CMD:d:SISTEMA:RESET"); area();
+      setup(); processarComando("CMD:d:SISTEMA:RESET"); processarComando("CMD:unit_1:GARRA:AREA:P01");
       check(count("CALIBRATION_NOT_VALIDATED") == 1 && writes() == 0, "EEPROM vazia liberou movimento");
     } else {
       fixture();
@@ -93,7 +104,8 @@ int main(int argc, char **argv) {
         Ponto corrupt = pontoY; corrupt.braco = 500; EEPROM.put(2, corrupt);
         carregarMemoria(); // O manual limita, mas a ponte deve recusar os dados brutos.
         check(pontoY.braco == maxBraco && !backendCalibracaoValida(), "corrupcao foi aceita apos constrain");
-        area(); check(writes() == 0 && count("CALIBRATION_NOT_VALIDATED") == 1, "corrupcao autorizou coleta");
+        processarComando("CMD:unit_1:GARRA:AREA:P01");
+        check(writes() == 0 && count("CALIBRATION_NOT_VALIDATED") == 1, "corrupcao autorizou coleta");
       } else if (scenario == "persist") {
         processarComando("SENSOR:ON:12:4000");
         pontoY = {0, 0, 0, 0}; pontoX = {0, 0, 0, 0}; pontoNeutro = {0, 0, 0, 0};
@@ -109,6 +121,22 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 55; ++i) { hostMillis += 60; monitorarSensor(); }
         check(sensorPresent && count("SENSOR:PRESENTE:8") == 1, "HC-SR04 nao detectou presenca estavel");
         check(writes() == 0 && !backendOcupado(), "presenca acionou braco sem autorizacao");
+      } else if (scenario == "hysteresis") {
+        auto tick = [](int n) { for (int i = 0; i < n; ++i) { hostMillis += 60; monitorarSensor(); } };
+        processarComando("CMD:PRESENCA:PRESENCA:CONFIGURAR:8:3000");
+        hostEcho = 4 * 58; tick(60);
+        check(sensorPresent && count("SENSOR:PRESENTE:4") == 1, "cubo a 4 cm nao foi detectado");
+        hostEcho = 9 * 58; tick(40);  // faixa de histerese (limite 8 + 2)
+        check(sensorPresent && count("SENSOR:AUSENTE") == 0, "faixa de histerese liberou a area");
+        hostEcho = 11 * 58; tick(15);
+        check(!sensorPresent && count("SENSOR:AUSENTE:11") == 1, "fundo acima da histerese nao liberou a area");
+        hostEcho = 9 * 58; tick(100);
+        check(!sensorPresent && count("SENSOR:PRESENTE") == 1, "fundo perto do limite gerou presenca falsa");
+        hostEcho = 4 * 58; tick(60); hostEcho = 0; tick(15);
+        check(!sensorPresent && count("SENSOR:AUSENTE:-1") == 1, "perda de eco nao liberou a area");
+        check(count("SENSOR:DISTANCIA:") >= 10, "distancia ao vivo nao foi relatada");
+        hostEcho = 7 * 58; processarComando("CMD:L:PRESENCA:LEITURA");
+        check(count("EVT:L:PRESENCA_LEITURA:7:7:7:9") == 1, "leitura avulsa incorreta");
       } else if (scenario == "manual") {
         processarComando("POSE:92:84:85:148");
         check(count("[POSE_DONE]") == 1 && angB == 92, "POSE manual regrediu");
@@ -143,6 +171,32 @@ int main(int argc, char **argv) {
         hostPins[2] = LOW; backendMonitorar(); hostMillis += 40; backendMonitorar();
         processarComando("CMD:unit_1:SENSOR:INICIAR:R01");
         check(count("DESTINO_ALCANCADO") == 0 && count("SENSOR_BLOCKED") == 1, "borda anterior ao transporte confirmou chegada");
+      } else if (scenario == "profile") {
+        profileArea();
+        processarComando("CMD:unit_1:GARRA:PASSO:E:1:35:100:92:87:300");
+        check(count("INVALID_STAGE") == 1 && writes() == 0, "entrega antes da coleta movimentou");
+        for (int i = 0; i < 4; ++i) profileStep(i);
+        check(count("EVT:unit_1:GARRA_PASSO_CONCLUIDO:") == 4 && backendCompleted == 15, "passos do perfil nao concluiram");
+        check(angB == 88 && angBraco == 83 && angCotovelo == 84 && angG == 149, "ultimo passo nao terminou no neutro");
+        size_t before = writes(); profileStep(3);
+        check(writes() == before && count("EVT:unit_1:GARRA_PASSO_CONCLUIDO:E:2") == 2, "reenvio do passo repetiu movimento");
+        processarComando("CMD:unit_2:GARRA:PERFIL:2:2:24");
+        check(count("ACK:unit_2:GARRA:PERFIL:2:2:24") == 1, "ciclo seguinte nao foi aceito apos conclusao");
+      } else if (scenario == "release") {
+        profileArea(); bool injected = false;
+        hostOnDelay = [&]() { heartbeat(); if (!injected) { injected = true; Serial.feed("CMD:unit_1:GARRA:STOP\n"); } };
+        profileStep(0);
+        check(!poseReferenciaConfirmada && sBase.attached(), "parada no movimento manteve referencia ou soltou servos");
+        hostOnDelay = heartbeat;
+        processarComando("CMD:POSE_SYNC:SISTEMA:SYNC:88:83:84:149");
+        check(count("ERR:POSE_SYNC:SISTEMA:SYNC:88:83:84:149:BUSY") == 1, "SYNC aceito com servos energizados");
+        processarComando("CMD:LIBERAR:SISTEMA:LIBERAR");
+        check(count("ACK:LIBERAR:SISTEMA:LIBERAR") == 1 && !sBase.attached() && !sGarra.attached(), "LIBERAR nao soltou os servos");
+        processarComando("CMD:POSE_SYNC:SISTEMA:SYNC:88:83:84:149");
+        check(poseReferenciaConfirmada, "SYNC apos LIBERAR foi recusado");
+        processarComando("CMD:d:SISTEMA:RESET");
+        processarComando("CMD:unit_9:GARRA:PERFIL:2:2:24");
+        check(count("ACK:unit_9:GARRA:PERFIL:2:2:24") == 1, "operacao nao voltou apos LIBERAR+SYNC+RESET");
       } else throw std::runtime_error("cenario desconhecido");
     }
     std::cout << "OK: " << scenario << '\n';

@@ -1,5 +1,7 @@
 from io import BytesIO
 import re
+import json
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, send_file
 
@@ -17,6 +19,7 @@ from core.controller import ControllerError, CycleProcessingError, SystemBusyErr
 from hardware.arduino import ArduinoError
 from hardware.serial_adapter import list_serial_ports
 from storage.queue import QueueError
+from storage.gripper_profile import GripperProfileError
 from vision.aruco import build_product_payload
 from storage.repositories import (
     ArucoMarkerConflictError,
@@ -387,12 +390,55 @@ def stop_system():
 
 @api_bp.post("/system/connect")
 def connect_system():
+    if current_app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_ACTIVE", "Encerre a sessão do calibrador antes de conectar o backend ao Arduino.", 409)
     controller = current_app.extensions["system_controller"]
+    warnings = []
+    labels = {"Arduino da garra": "garra", "controlador da esteira": "esteira"}
+    for label, device in controller._hardware_devices():
+        try:
+            if not device.is_connected():
+                device.connect()
+            if not device.is_connected():
+                raise ControllerError(f"O {label} nao ficou conectado.")
+            device.execute("SISTEMA:PING", "DIAGNOSTICO", timeout=controller.command_timeout, retries=0)
+        except Exception as exc:
+            try:
+                device.disconnect()
+            except Exception:
+                pass
+            warnings.append(f"{labels.get(label, label)}: {getattr(exc, 'message', str(exc))}")
     try:
-        snapshot = controller.connect_components()
-    except ControllerError as exc:
-        return _error_response(exc.code, exc.message, 503)
-    return jsonify({"ok": True, "sistema": snapshot})
+        if not controller.camera.is_connected() and hasattr(controller.camera, "connect"):
+            controller.camera.connect()
+    except Exception as exc:
+        warnings.append(f"camera: {getattr(exc, 'message', str(exc))}")
+    snapshot = controller._connection_status()
+    controller.state.update(**snapshot)
+    return jsonify({"ok": True, "sistema": snapshot, "avisos": warnings,
+                    "conectados": sum(bool(value) for value in snapshot.values())})
+
+
+@api_bp.post("/system/connect/conveyor")
+def connect_conveyor():
+    controller = current_app.extensions["system_controller"]
+    device = controller.conveyor.device
+    if getattr(device, "mode", None) not in {"ev3", "ev3_simulator"}:
+        return _error_response("EV3_NOT_SELECTED", "Selecione e aplique LEGO EV3 como controlador da esteira primeiro.", 409)
+    try:
+        if not device.is_connected():
+            device.connect()
+        device.execute("SISTEMA:PING", "DIAGNOSTICO", timeout=controller.command_timeout, retries=0)
+    except Exception as exc:
+        try:
+            device.disconnect()
+        except Exception:
+            pass
+        controller.state.update(**controller._connection_status())
+        return _error_response(getattr(exc, "code", "EV3_CONNECTION_FAILED"), getattr(exc, "message", str(exc)), 503)
+    controller.state.update(**controller._connection_status())
+    return jsonify({"ok": True, "conectado": True, "modo": device.mode,
+                    "host": getattr(device, "host", None), "porta": getattr(device, "port", None)})
 
 
 @api_bp.get("/hardware/ports")
@@ -404,8 +450,103 @@ def hardware_ports():
     return jsonify({"ok": True, "portas": ports})
 
 
+@api_bp.get("/system/config")
+def system_config():
+    app = current_app
+    return jsonify({"ok": True, "configuracao": _public_system_config(app),
+                    "calibracao_ativa": bool(app.extensions.get("calibration_session"))})
+
+
+@api_bp.post("/system/config")
+def save_system_config():
+    app = current_app
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _error_response("INVALID_REQUEST", "Envie as configuracoes em JSON.", 400)
+    if app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_ACTIVE", "Desconecte o calibrador antes de alterar a configuracao.", 409)
+    workflow = app.extensions["workflow"]
+    if workflow.running() or (workflow._worker is not None and workflow._worker.is_alive()):
+        return _error_response("SYSTEM_BUSY", "Pare o fluxo automatico e aguarde a parada antes de aplicar configuracoes.", 409)
+    try:
+        settings = _validate_system_config(payload)
+        _apply_system_config(app, settings)
+        path = app.extensions["local_system_config_path"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Preserva opcoes gravadas fora desta tela (ex.: AUTO_SYNC_NEUTRAL).
+        try:
+            stored = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            stored = {}
+        stored = {**(stored if isinstance(stored, dict) else {}), **settings}
+        path.write_text(json.dumps(stored, ensure_ascii=False, indent=2), encoding="utf-8")
+    except (ValueError, OSError, RuntimeError) as exc:
+        return _error_response("CONFIGURATION_FAILED", str(exc), 400)
+    return jsonify({"ok": True, "configuracao": _public_system_config(app),
+                    "mensagem": "Configuracao aplicada e salva neste computador. Conecte os dispositivos quando estiver pronto."})
+
+
+@api_bp.post("/calibration/session/start")
+def start_calibration_session():
+    app = current_app
+    if app.extensions.get("calibration_session"):
+        return jsonify({"ok": True, "mensagem": "A sessao de calibracao ja esta ativa."})
+    workflow = app.extensions["workflow"]
+    if workflow.running() or (workflow._worker is not None and workflow._worker.is_alive()):
+        workflow.stop()
+        if workflow._worker is not None:
+            workflow._worker.join(timeout=4)
+        if workflow._worker is not None and workflow._worker.is_alive():
+            return _error_response("SYSTEM_BUSY", "O fluxo ainda esta encerrando. Tente assumir o controle novamente em alguns segundos.", 409)
+    arduino = app.extensions["system_controller"].gripper.arduino
+    try:
+        if arduino.is_connected():
+            arduino.disconnect()
+    except Exception as exc:
+        return _error_response("SERIAL_RELEASE_FAILED", f"Nao foi possivel liberar a porta do Arduino: {exc}", 503)
+    app.extensions["calibration_session"] = True
+    return jsonify({"ok": True, "mensagem": "Fluxo parado e porta serial liberada para o calibrador."})
+
+
+@api_bp.post("/calibration/session/release")
+def release_calibration_session():
+    current_app.extensions["calibration_session"] = False
+    return jsonify({"ok": True})
+
+
+@api_bp.get("/calibration/profile")
+def get_calibration_profile():
+    store = current_app.extensions["gripper_profile_store"]
+    try:
+        profile = store.load()
+    except GripperProfileError as exc:
+        return _error_response("GRIPPER_PROFILE_INVALID", str(exc), 503)
+    return jsonify({"ok": True, "perfil": profile, "origem": store.source()})
+
+
+@api_bp.post("/calibration/profile")
+def save_calibration_profile():
+    app = current_app
+    if not app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_SESSION_REQUIRED", "Assuma o controle do calibrador antes de transferir o fluxo.", 409)
+    workflow = app.extensions["workflow"]
+    if workflow.running() or (workflow._worker is not None and workflow._worker.is_alive()):
+        return _error_response("SYSTEM_BUSY", "Encerre o fluxo automático antes de substituir a trajetória.", 409)
+    payload = request.get_json(silent=True)
+    try:
+        profile = app.extensions["gripper_profile_store"].save(payload)
+    except GripperProfileError as exc:
+        return _error_response("GRIPPER_PROFILE_INVALID", str(exc), 400)
+    except OSError as exc:
+        return _error_response("GRIPPER_PROFILE_SAVE_FAILED", f"Não foi possível salvar o fluxo: {exc}.", 503)
+    return jsonify({"ok": True, "perfil": profile, "origem": "personalizado",
+                    "mensagem": "Fluxo transferido para a operação coletiva."})
+
+
 @api_bp.post("/system/reset")
 def reset_system():
+    if current_app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_ACTIVE", "Encerre a sessão do calibrador antes de resetar o sistema.", 409)
     controller = current_app.extensions["system_controller"]
     try:
         snapshot = current_app.extensions["workflow"].reset()
@@ -414,6 +555,52 @@ def reset_system():
     except ControllerError as exc:
         return _error_response(exc.code, exc.message, 409)
     return jsonify({"ok": True, "sistema": snapshot})
+
+
+@api_bp.post("/system/confirm-neutral")
+def confirm_neutral_pose():
+    app = current_app
+    if app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_ACTIVE", "Encerre o calibrador antes de confirmar o neutro pelo Dashboard.", 409)
+    flow_snapshot = app.extensions["workflow"].snapshot()["fluxo"]
+    if flow_snapshot.get("ciclo_id"):
+        return _error_response("SYSTEM_BUSY", "Aguarde o ciclo atual terminar antes de confirmar o neutro.", 409)
+    try:
+        result = app.extensions["system_controller"].confirm_neutral_pose()
+    except (GripperProfileError, ArduinoError, ControllerError) as exc:
+        return _error_response(getattr(exc, "code", "POSE_SYNC_FAILED"), getattr(exc, "message", str(exc)), 409)
+    return jsonify({"ok": True, **result,
+                    "mensagem": "Referência lógica atualizada. O firmware não moveu os servos."})
+
+
+@api_bp.post("/sensor/leitura")
+def read_presence_sensor():
+    app = current_app
+    if app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_ACTIVE", "Encerre o calibrador antes de medir o sensor.", 409)
+    flow = app.extensions["workflow"].snapshot()["fluxo"]
+    if flow.get("ativo") and flow.get("ciclo_id"):
+        return _error_response("SYSTEM_BUSY", "Aguarde o ciclo atual terminar para medir o sensor.", 409)
+    try:
+        reading = app.extensions["system_controller"].read_presence_distance()
+    except (ArduinoError, ControllerError) as exc:
+        return _error_response(getattr(exc, "code", "SENSOR_READ_FAILED"), getattr(exc, "message", str(exc)), 409)
+    return jsonify({"ok": True, **reading})
+
+
+@api_bp.post("/system/release-servos")
+def release_servos():
+    app = current_app
+    if app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_ACTIVE", "Encerre o calibrador antes de soltar os servos pelo Dashboard.", 409)
+    flow = app.extensions["workflow"].snapshot()["fluxo"]
+    if flow.get("ativo") and flow.get("ciclo_id"):
+        return _error_response("SYSTEM_BUSY", "Aguarde o ciclo atual terminar antes de soltar os servos.", 409)
+    try:
+        result = app.extensions["system_controller"].release_servos()
+    except (ArduinoError, ControllerError) as exc:
+        return _error_response(getattr(exc, "code", "RELEASE_FAILED"), getattr(exc, "message", str(exc)), 409)
+    return jsonify({"ok": True, **result, "mensagem": "Servos soltos. Alinhe o braço no neutro e confirme."})
 
 
 @api_bp.get("/queue")
@@ -442,6 +629,8 @@ def retry_queue_item(item_id):
 
 @api_bp.post("/flow/start")
 def start_flow():
+    if current_app.extensions.get("calibration_session"):
+        return _error_response("CALIBRATION_ACTIVE", "Encerre a sessão do calibrador antes de iniciar o fluxo automático.", 409)
     try:
         snapshot = current_app.extensions["workflow"].start()
     except QueueError as exc:
@@ -488,6 +677,7 @@ def operational_diagnostics():
         telemetry = getattr(device, "telemetry", None)
         devices.append({"nome": name, "modo": getattr(device, "mode", "desconhecido"),
                         "conectado": device.is_connected(), "ping_em": telemetry.last_ping_at if telemetry else None,
+                        "erro_conexao": getattr(device, "_reader_error", None),
                         "mensagens": telemetry.snapshot()[-40:] if telemetry else []})
     cycle_id = controller.state.snapshot()["ciclo_id"]
     return jsonify({"ok": True, "dispositivos": devices,
@@ -513,3 +703,148 @@ def _with_macroregion(product: dict) -> dict:
         **product,
         "macroregiao": STATE_TO_MACROREGION[product["uf"]].value,
     }
+
+
+def _validate_system_config(payload):
+    hardware = str(payload.get("hardware_mode", "serial")).strip().lower()
+    conveyor = str(payload.get("conveyor_mode", "arduino")).strip().lower()
+    camera = str(payload.get("camera_mode", "opencv")).strip().lower()
+    if hardware not in {"serial", "mock"}:
+        raise ValueError("Escolha Arduino serial ou simulado.")
+    if conveyor not in {"arduino", "mock", "ev3", "ev3_simulator"}:
+        raise ValueError("Modo da esteira invalido.")
+    if camera not in {"opencv", "mock"}:
+        raise ValueError("Modo da camera invalido.")
+    port = str(payload.get("arduino_port", "COM3")).strip()
+    if hardware == "serial" and not port:
+        raise ValueError("Informe a porta serial do Arduino, por exemplo COM3.")
+    try:
+        baud = int(payload.get("arduino_baudrate", 9600))
+        camera_index = int(payload.get("camera_index", 0))
+        ev3_port = int(payload.get("ev3_port", 8765))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Baud rate, índice da câmera e porta EV3 devem ser números inteiros.") from exc
+    if baud not in {9600, 19200, 38400, 57600, 115200}:
+        raise ValueError("Baud rate não suportado pela interface.")
+    if camera_index < 0 or not 1 <= ev3_port <= 65535:
+        raise ValueError("Índice da câmera ou porta EV3 fora da faixa válida.")
+    return {
+        "HARDWARE_MODE": hardware,
+        "ARDUINO_PORT": port or "COM3",
+        "ARDUINO_BAUDRATE": baud,
+        "CONVEYOR_MODE": conveyor,
+        "EV3_HOST": str(payload.get("ev3_host", "")).strip(),
+        "EV3_PORT": ev3_port,
+        "EV3_TOKEN": str(payload.get("ev3_token", "")).strip() or str(current_app.config.get("EV3_TOKEN", "")),
+        "CAMERA_MODE": camera,
+        "CAMERA_INDEX": camera_index,
+        "GRIPPER_PROFILE_CALIBRATED": bool(payload.get("gripper_calibrated", True)),
+    }
+
+
+def _public_system_config(app):
+    return {
+        "hardware_mode": app.config.get("HARDWARE_MODE", "mock"),
+        "arduino_port": app.config.get("ARDUINO_PORT", "COM3"),
+        "arduino_baudrate": app.config.get("ARDUINO_BAUDRATE", 9600),
+        "conveyor_mode": app.config.get("CONVEYOR_MODE", "arduino"),
+        "ev3_host": app.config.get("EV3_HOST", ""),
+        "ev3_port": app.config.get("EV3_PORT", 8765),
+        "ev3_token_configured": bool(app.config.get("EV3_TOKEN", "")),
+        "camera_mode": app.config.get("CAMERA_MODE", "opencv"),
+        "camera_index": app.config.get("CAMERA_INDEX", 0),
+        "gripper_calibrated": app.extensions["system_controller"].gripper.calibrated,
+    }
+
+
+def _apply_system_config(app, settings):
+    import atexit
+    from threading import Thread
+    from secrets import token_hex
+    from core.controller import SystemController
+    from hardware.conveyor import Conveyor
+    from hardware.ev3_adapter import EV3Adapter
+    from hardware.gripper import Gripper
+    from hardware.mock import MockArduino
+    from hardware.serial_adapter import SerialArduino
+    from vision.mock import MockArucoCamera
+    from vision.aruco import ArucoCamera
+
+    controller = app.extensions["system_controller"]
+    if settings["HARDWARE_MODE"] == "mock":
+        arduino = MockArduino()
+        arduino.connect()
+    else:
+        arduino = SerialArduino(port=settings["ARDUINO_PORT"], baudrate=settings["ARDUINO_BAUDRATE"],
+                                read_timeout=app.config.get("ARDUINO_READ_TIMEOUT", 0.1),
+                                write_timeout=app.config.get("ARDUINO_WRITE_TIMEOUT", 1.0),
+                                boot_wait=app.config.get("ARDUINO_BOOT_WAIT", 2.0))
+
+    new_server = None
+    new_server_thread = None
+    conveyor_mode = settings["CONVEYOR_MODE"]
+    if conveyor_mode == "arduino":
+        conveyor_device = arduino
+    elif conveyor_mode == "mock":
+        conveyor_device = MockArduino()
+        conveyor_device.connect()
+    else:
+        host, port, token = settings["EV3_HOST"], settings["EV3_PORT"], settings["EV3_TOKEN"]
+        if conveyor_mode == "ev3_simulator":
+            from ev3.simulator import EV3Simulator
+            token = token_hex(16)
+            new_server = EV3Simulator(token=token, delay=app.config.get("EV3_SIMULATOR_DELAY", 0.3))
+            new_server_thread = Thread(target=new_server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+            new_server_thread.start()
+            host, port = new_server.server_address
+        conveyor_device = EV3Adapter(host=host, port=port, token=token,
+                                     connect_timeout=app.config.get("EV3_CONNECT_TIMEOUT", 2.0))
+        if conveyor_mode == "ev3_simulator":
+            conveyor_device.mode = "ev3_simulator"
+            conveyor_device.arrival_source = "simulado"
+
+    camera_mode = settings["CAMERA_MODE"]
+    if camera_mode == "mock":
+        camera = MockArucoCamera()
+    else:
+        camera = ArucoCamera(settings["CAMERA_INDEX"], width=app.config.get("CAMERA_WIDTH", 1280),
+                             height=app.config.get("CAMERA_HEIGHT", 720),
+                             scan_timeout=app.config.get("CAMERA_SCAN_TIMEOUT", 8.0),
+                             retry_interval=app.config.get("CAMERA_RETRY_INTERVAL", 0.08),
+                             duplicate_cooldown=app.config.get("CAMERA_DUPLICATE_COOLDOWN", 3.0),
+                             aruco_resolver=app.extensions["product_repository"].resolve_aruco,
+                             pickup_roi=app.config.get("CAMERA_PICKUP_ROI"))
+
+    monitor = app.extensions["camera_monitor"]
+    monitor.shutdown()
+    old_devices = {id(device): device for device in (controller.gripper.arduino, controller.conveyor.device)}
+    for device in old_devices.values():
+        try:
+            device.disconnect()
+        except Exception:
+            pass
+    try:
+        controller.camera.disconnect()
+    except Exception:
+        pass
+    old_server_stop = app.extensions.pop("stop_conveyor_server", None)
+    if old_server_stop:
+        old_server_stop()
+
+    controller.gripper = Gripper(arduino, pickup_zone=controller.gripper.pickup_zone,
+                                 calibrated=settings["GRIPPER_PROFILE_CALIBRATED"])
+    controller.conveyor = Conveyor(conveyor_device,
+        arrival_sensor=arduino if app.config.get("ARRIVAL_SENSOR_MODE") == "arduino" and conveyor_device is not arduino else None)
+    controller.camera = camera
+    app.extensions.update(arduino=arduino, conveyor_device=conveyor_device, camera=camera)
+    if new_server is not None:
+        def stop_server():
+            new_server.shutdown()
+            new_server.server_close()
+            new_server_thread.join(timeout=1)
+        app.extensions["conveyor_server"] = new_server
+        app.extensions["stop_conveyor_server"] = stop_server
+        atexit.register(stop_server)
+    for key, value in settings.items():
+        app.config[key] = value
+    monitor.start()

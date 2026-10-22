@@ -95,6 +95,27 @@ class SerialArduinoTests(unittest.TestCase):
         self.assertEqual(reading["distancia_cm"], 7)
         self.assertNotIn("SENSOR:PRESENTE:7", arduino.invalid_frames)
 
+    def test_sensor_event_survives_heartbeat_traffic_and_disconnect_invalidates_it(self):
+        arduino = self.build_arduino(self.acknowledge)
+        self.port.inject("SENSOR:PRESENTE:4")
+        self.assertIsNotNone(arduino.presence.wait_present(0, timeout=0.5))
+        # O leitor grava o evento antes do ACK que confirma a fila drenada.
+        arduino.execute("SISTEMA:PING", "DIAGNOSTICO", timeout=0.2)
+        for _ in range(250):
+            arduino.telemetry.record("RX", parse_message("ACK:SERIAL_HEARTBEAT:SISTEMA:PING"))
+        self.assertTrue(any(row["mensagem"] == "SENSOR:PRESENTE:4" for row in arduino.telemetry.snapshot()))
+        self.assertIsNotNone(arduino.presence.snapshot()["recebido_em"])
+        arduino.disconnect()
+        self.assertIsNone(arduino.presence.snapshot()["presente"])
+        self.assertIsNone(arduino.presence.snapshot()["distancia_cm"])
+
+    def test_serial_failure_clears_cached_presence(self):
+        arduino = self.build_arduino(self.acknowledge)
+        arduino.presence.update(True, 3)
+        arduino._mark_connection_failed(OSError("USB removido"))
+        self.assertFalse(arduino.is_connected())
+        self.assertIsNone(arduino.presence.snapshot()["presente"])
+
     def test_retries_after_command_timeout(self):
         def answer_second_attempt(port, frame, attempt):
             if attempt == 2:
