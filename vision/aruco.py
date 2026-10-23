@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from io import BytesIO
 import json
+import os
 from threading import RLock
 from time import monotonic, sleep
 
@@ -91,10 +92,19 @@ class ArucoCamera:
             if self._capture is not None and self._capture.isOpened():
                 return True
 
-            capture = self._cv2.VideoCapture(self.camera_index)
-            if capture is None or not capture.isOpened():
+            # No Windows o backend padrao (Media Foundation) abriu a C270 sem entregar
+            # frames e levava ~80 s; DirectShow abre em segundos. Padrao fica de reserva.
+            backends = ([self._cv2.CAP_DSHOW] if os.name == "nt" and hasattr(self._cv2, "CAP_DSHOW") else []) + [None]
+            capture = None
+            for backend in backends:
+                capture = (self._cv2.VideoCapture(self.camera_index) if backend is None
+                           else self._cv2.VideoCapture(self.camera_index, backend))
+                if capture is not None and capture.isOpened():
+                    break
                 if capture is not None:
                     capture.release()
+                capture = None
+            if capture is None:
                 self._capture = None
                 self._connected = False
                 return False
