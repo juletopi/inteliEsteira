@@ -1,5 +1,5 @@
 param(
-    [string]$Ev3Host = '192.168.137.3',
+    [string]$Ev3Host = '169.254.209.204',
     [string]$User = 'robot',
     [int]$Port = 8765,
     # Sem o servico systemd a ponte so roda ate o EV3 desligar.

@@ -11,6 +11,12 @@ $env:PYTHONIOENCODING = 'utf-8'
 $logDir = Join-Path $projectRoot 'output\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir 'backend.log'
+# Um backend recem-encerrado pode segurar o log por alguns segundos; sem esperar,
+# o redirecionamento do cmd falha e o Python nem chega a iniciar.
+for ($i = 0; $i -lt 20; $i++) {
+    try { [IO.File]::Open($log, 'OpenOrCreate', 'ReadWrite', 'None').Close(); break }
+    catch { Start-Sleep -Milliseconds 500 }
+}
 if ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).Length -gt 10MB) {
     Move-Item -Force -LiteralPath $log -Destination "$log.1"
 }
