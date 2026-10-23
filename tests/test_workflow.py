@@ -5,6 +5,7 @@ import unittest
 
 from app import create_app
 from hardware.protocol import parse_message
+from storage.queue import QueueError
 from vision.aruco import build_product_payload
 
 
@@ -46,6 +47,13 @@ class WorkflowTests(unittest.TestCase):
     def commands(self):
         return [parse_message(frame).payload for frame in self.hardware.command_log]
 
+    def pickups(self):
+        # Cada coleta comeca pelo primeiro passo de pega do perfil do calibrador.
+        return sum(command.startswith("GARRA:PASSO:P:1:") for command in self.commands())
+
+    def released(self):
+        return any(command.startswith("GARRA:PASSO:E:") for command in self.commands())
+
     def completed(self, count):
         self.wait_for(lambda: len([i for i in self.flow.snapshot()["itens"] if i["estado"] == "FINALIZADO"]) == count
                       and self.flow.snapshot()["proxima_caixa_liberada"])
@@ -54,7 +62,7 @@ class WorkflowTests(unittest.TestCase):
         self.start()
         self.client.post("/api/simulation/camera", json={"produto_id": "FIRST"})
         sleep(0.06)
-        self.assertNotIn("GARRA:PEGAR", self.commands())
+        self.assertEqual(self.pickups(), 0)
         self.assertEqual(self.flow.snapshot()["itens"], [])
         self.assertEqual(self.client.post("/api/queue", json={"produto_ids": ["FIRST"]}).status_code, 409)
 
@@ -77,7 +85,7 @@ class WorkflowTests(unittest.TestCase):
         original = camera.scan_aruco
 
         def read_on_belt(**kwargs):
-            self.assertIn("GARRA:SOLTAR", self.commands())
+            self.assertTrue(self.released())
             self.assertEqual(self.flow.snapshot()["itens"], [])
             return original(**kwargs)
 
@@ -101,12 +109,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(production["simulado"])
         self.hardware.presence.update(False)
         self.hardware.presence.update(True, 5)
-        self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
+        self.assertEqual(self.pickups(), 1)
         cycle = self.flow.snapshot()["itens"][0]["ciclo_id"]
         self.hardware._events.put(parse_message(f"EVT:{cycle}:DESTINO_ALCANCADO:R07"))
         self.completed(1)
         sleep(0.06)
-        self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
+        self.assertEqual(self.pickups(), 1)
         self.present("SECOND")
         self.completed(2)
         self.assertEqual([i["produto_id"] for i in self.flow.snapshot()["itens"]], ["FIRST", "SECOND"])
@@ -115,9 +123,9 @@ class WorkflowTests(unittest.TestCase):
         self.start()
         self.present("FIRST")
         self.completed(1)
-        self.hardware.presence.update(True, 5)
-        sleep(0.06)
-        self.assertEqual(self.commands().count("GARRA:PEGAR"), 1)
+        # Sem nova confirmacao do sensor apos o rearme, nao ha outra coleta.
+        sleep(0.2)
+        self.assertEqual(self.pickups(), 1)
         self.present("FIRST")
         self.completed(2)
         items = self.flow.snapshot()["itens"]
@@ -131,16 +139,22 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
         self.assertEqual(self.flow.snapshot()["itens"], [])
         self.assertNotIn("ESTEIRA:START", self.commands())
-        self.assertNotIn("GARRA:SOLTAR", self.commands())
+        self.assertFalse(self.released())
 
-    def test_unknown_label_leaves_cube_on_stopped_belt_and_blocks_next_pickup(self):
+    def test_unknown_label_waits_for_operator_discard_before_next_pickup(self):
         self.start()
         self.present("UNKNOWN")
-        self.wait_for(lambda: not self.flow.running())
-        self.assertIn("GARRA:SOLTAR", self.commands())
+        self.wait_for(lambda: self.flow.snapshot()["fluxo"]["aguardando_leitura"])
+        self.assertTrue(self.flow.running())
+        self.assertTrue(self.released())
         self.assertNotIn("ESTEIRA:START", self.commands())
-        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
+        self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "LENDO_ARUCO")
         self.assertEqual(self.client.post("/api/flow/start").status_code, 409)
+        self.assertEqual(self.client.post("/api/flow/discard").status_code, 200)
+        self.wait_for(lambda: self.flow.snapshot()["proxima_caixa_liberada"])
+        self.present("FIRST")
+        self.wait_for(lambda: self.app.extensions["cycle_repository"].count_completed() == 1)
+        self.assertEqual(self.flow.snapshot()["itens"][0]["produto_id"], "FIRST")
 
     def test_missing_conveyor_completion_does_not_finish_or_accept_next_unit(self):
         self.start()
@@ -186,18 +200,115 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/simulation/presence", json={"presente": True}).status_code, 403)
         self.assertEqual(self.client.post("/api/simulation/presence", json={"presente": "true"}).status_code, 403)
 
-    def test_heartbeat_failure_blocks_automatic_operation(self):
+    def test_idle_heartbeat_failure_reconnects_without_pickup(self):
+        self.start()
+        resets = self.commands().count("SISTEMA:RESET")
+        self.hardware.timeout_next("SISTEMA:PING", attempts=3)
+        # Sem unidade em andamento: refaz a preparacao (novo RESET) e continua ativo.
+        self.wait_for(lambda: self.commands().count("SISTEMA:RESET") > resets, timeout=8)
+        self.wait_for(lambda: self.flow.snapshot()["proxima_caixa_liberada"])
+        self.assertTrue(self.flow.running())
+        self.assertIsNone(self.flow.snapshot()["fluxo"]["erro"])
+        self.assertEqual(self.pickups(), 0)
+        self.present("FIRST")
+        self.completed(1)
+
+    def test_heartbeat_failure_during_unit_stops_operation(self):
+        self.start()
+        self.hardware.suppress_next_arrival_event()
+        self.app.extensions["system_controller"].arrival_timeout = 10
+        self.present("FIRST")
+        self.wait_for(lambda: self.app.extensions["system_controller"].state.snapshot()["estado"] == "TRANSPORTANDO")
+        self.hardware.timeout_next("SISTEMA:PING", attempts=3)
+        self.wait_for(lambda: not self.flow.running(), timeout=8)
+        self.assertEqual(self.flow.snapshot()["fluxo"]["erro"]["codigo"], "HEARTBEAT_FAILED")
+
+    def test_auto_sync_references_neutral_without_operator(self):
+        self.flow.auto_sync_neutral = True
+        self.hardware.pose_referenced = False
+        self.start()
+        self.assertTrue(any(command.startswith("SISTEMA:SYNC:") for command in self.commands()))
+        self.present("FIRST")
+        self.completed(1)
+
+    def test_without_auto_sync_unreferenced_arm_waits_for_operator(self):
+        self.hardware.pose_referenced = False
+        self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
+        self.wait_for(lambda: self.flow.snapshot()["fluxo"].get("estado") == "AGUARDANDO_CONEXAO")
+        self.assertFalse(any(command.startswith("SISTEMA:SYNC:") for command in self.commands()))
+
+    def test_boot_waits_for_lease_of_abruptly_killed_process(self):
+        from app import _start_automatic_operation
+
+        # Processo anterior morto sem liberar a posse: ela expira em seguida.
+        self.flow.repository.acquire("killed", lease=0.6)
+        _start_automatic_operation(self.app, retry_interval=0.1)
+        self.wait_for(lambda: self.flow.snapshot()["proxima_caixa_liberada"], timeout=5)
+        self.assertTrue(self.flow.running())
+
+    def test_sensor_is_rearmed_after_each_unit(self):
+        self.start()
+        configured = sum(command.startswith("PRESENCA:CONFIGURAR:") for command in self.commands())
+        self.present("FIRST")
+        self.completed(1)
+        self.wait_for(lambda: sum(command.startswith("PRESENCA:CONFIGURAR:") for command in self.commands()) > configured)
+        self.present("SECOND")
+        self.completed(2)
+
+    def test_background_inside_limit_is_reported(self):
+        # Limite do perfil e 5 cm: fundo a 6 cm cairia na faixa de histerese.
+        self.hardware.presence_background_cm = 6
+        self.start()
+        aviso = self.flow.snapshot()["fluxo"]["aviso"]
+        self.assertIn("lendo 6 cm com o limite em 5 cm", aviso)
+        self.assertIn("no máximo 3 cm", aviso)
+        self.hardware.presence_background_cm = -1
+        self.present("FIRST")
+        self.completed(1)
+        self.wait_for(lambda: self.flow.snapshot()["fluxo"]["aviso"] is None)
+
+    def test_live_distance_does_not_create_presence_edges(self):
+        sensor = self.hardware.presence
+        before = sensor.snapshot()["sequencia"]
+        self.assertTrue(sensor.ingest_distance("SENSOR:DISTANCIA:23"))
+        self.assertTrue(sensor.ingest_distance("SENSOR:DISTANCIA:-1"))
+        self.assertTrue(sensor.ingest_distance("SENSOR:DISTANCIA:9"))
+        snapshot = sensor.snapshot()
+        self.assertEqual((snapshot["sequencia"], snapshot["presente"], snapshot["distancia_atual_cm"]), (before, None, 9))
+        self.assertEqual(self.client.post("/api/sensor/leitura").get_json()["mediana_cm"], -1)
+
+    def test_clean_operator_stop_rearms_at_boot_but_error_does_not(self):
+        self.start()
+        self.client.post("/api/system/stop")
+        self.wait_for(lambda: not self.flow.running())
+        self.assertEqual(self.client.post("/api/flow/start").status_code, 409)
+        # Novo processo (boot) com o mesmo banco: a parada limpa nao bloqueia o rearme.
+        restarted = create_app(self.config)
+        flow = restarted.extensions["workflow"]
+        try:
+            flow.start(at_boot=True)
+            self.wait_for(lambda: flow.snapshot()["proxima_caixa_liberada"])
+        finally:
+            flow.shutdown()
+        flow.repository.set_info(estado="ERRO")
+        again = create_app(self.config).extensions["workflow"]
+        with self.assertRaises(QueueError):
+            again.start(at_boot=True)
+
+    def test_single_late_heartbeat_does_not_stop_operation(self):
         self.start()
         self.hardware.timeout_next("SISTEMA:PING")
-        self.wait_for(lambda: not self.flow.running())
-        self.assertEqual(self.flow.snapshot()["fluxo"]["erro"]["codigo"], "HEARTBEAT_FAILED")
-        self.assertNotIn("GARRA:PEGAR", self.commands())
+        sleep(2.5)
+        self.assertTrue(self.flow.running())
+        self.present("FIRST")
+        self.completed(1)
 
     def test_real_gripper_without_calibration_does_not_arm_automatic_pickup(self):
         self.hardware.mode = "serial"
+        self.hardware.firmware_calibrated = False
         self.assertEqual(self.client.post("/api/flow/start").status_code, 202)
         self.wait_for(lambda: self.flow.snapshot()["fluxo"].get("estado") == "AGUARDANDO_CONEXAO")
-        self.assertNotIn("GARRA:PEGAR", self.commands())
+        self.assertEqual(self.pickups(), 0)
         self.assertFalse(self.flow.snapshot()["proxima_caixa_liberada"])
 
     def test_restart_reconciles_completed_cycle_before_queue_was_updated(self):
@@ -256,7 +367,7 @@ class WorkflowTests(unittest.TestCase):
         try:
             self.wait_for(lambda: flow.snapshot()["proxima_caixa_liberada"])
             self.assertTrue(flow.running())
-            self.assertNotIn("GARRA:PEGAR", [parse_message(frame).payload for frame in app.extensions["arduino"].command_log])
+            self.assertFalse(any(parse_message(frame).payload.startswith("GARRA:PASSO:") for frame in app.extensions["arduino"].command_log))
         finally:
             flow.shutdown()
 
@@ -269,7 +380,7 @@ class WorkflowTests(unittest.TestCase):
             flow.start()
             self.wait_for(lambda: flow.snapshot()["proxima_caixa_liberada"])
             self.assertEqual(flow.snapshot()["itens"], [])
-            self.assertNotIn("GARRA:PEGAR", [parse_message(frame).payload for frame in restarted.extensions["arduino"].command_log])
+            self.assertFalse(any(parse_message(frame).payload.startswith("GARRA:PASSO:") for frame in restarted.extensions["arduino"].command_log))
         finally:
             flow.shutdown()
 

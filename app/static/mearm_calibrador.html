@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoboArm — Controle & Calibração</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0c0d0e;
+      --card-bg: #141619;
+      --card-sub: #1b1e23;
+      --border: #262a30;
+      --text: #f3f4f6;
+      --text-muted: #8b949e;
+      --orange: #f97316;
+      --blue: #38bdf8;
+      --teal: #349296;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* ─── TOPO / HEADER ─── */
+    .header {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .logo-area { display: flex; align-items: center; gap: 12px; }
+    .logo-badge {
+      font-size: 1.3rem;
+      background: rgba(249, 115, 22, 0.15);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      padding: 6px 10px;
+      border-radius: 10px;
+    }
+    .app-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.2px; }
+    .app-desc { font-size: 0.75rem; color: var(--text-muted); }
+
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px;
+      background: var(--card-sub);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--red);
+    }
+    .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+    /* ─── BOTÕES GERAIS ─── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem; font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--card-sub);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.12s ease;
+      user-select: none;
+    }
+    .btn:hover { background: #262a33; border-color: #3b424e; }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; pointer-events: none; }
+
+    .btn-orange { background: var(--orange); border-color: var(--orange); color: #000; font-weight: 700; }
+    .btn-orange:hover { background: #ea580c; border-color: #ea580c; }
+
+    .btn-green { background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.35); color: var(--green); }
+    .btn-green:hover { background: rgba(34, 197, 94, 0.25); }
+
+    .btn-red { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.35); color: #f87171; }
+    .btn-red:hover { background: rgba(239, 68, 68, 0.25); }
+
+    .btn-yellow { background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.35); color: var(--yellow); }
+    .btn-yellow:hover { background: rgba(234, 179, 8, 0.25); }
+
+    .btn-sm { padding: 5px 10px; font-size: 0.72rem; }
+
+    /* ─── BARRA DE EMERGÊNCIA / ATALHOS ─── */
+    .quick-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 14px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .quick-group { display: flex; align-items: center; gap: 6px; }
+
+    /* ─── GRID DE CONTROLE PRINCIPAL ─── */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 768px) {
+      .main-layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .panel-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+    }
+
+    /* ─── CARDS DOS MOTORES ─── */
+    .motor-row {
+      background: var(--card-sub);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .motor-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .motor-info { display: flex; align-items: center; gap: 8px; }
+    .motor-pin {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #000;
+      border: 1px solid var(--border);
+      color: var(--orange);
+    }
+    .motor-name { font-size: 0.82rem; font-weight: 700; }
+    .motor-deg {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    /* SLIDERS ELEGANTES */
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #282c34;
+      border-radius: 10px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--text);
+      border: 3px solid var(--orange);
+      cursor: grab;
+      box-shadow: 0 0 6px rgba(0,0,0,0.5);
+    }
+    input[type=range]::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.15); }
+
+    .motor-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .step-btns { display: flex; gap: 4px; }
+    .btn-step {
+      font-family: 'JetBrains Mono', monospace;
+      padding: 3px 8px;
+      font-size: 0.7rem;
+      background: #101215;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .btn-step:hover { color: var(--text); border-color: var(--orange); }
+
+    /* ─── CARD DA GARRA (SUPER PRÁTICO) ─── */
+    .claw-card {
+      background: rgba(234, 179, 8, 0.05);
+      border: 1px solid rgba(234, 179, 8, 0.25);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .claw-actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .claw-big-btn {
+      padding: 10px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid transparent;
+      transition: 0.12s;
+    }
+    .claw-big-btn.open { background: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.4); color: #4ade80; }
+    .claw-big-btn.open:hover { background: rgba(34, 197, 94, 0.3); }
+    .claw-big-btn.close { background: rgba(249, 115, 22, 0.2); border-color: rgba(249, 115, 22, 0.4); color: #fb923c; }
+    .claw-big-btn.close:hover { background: rgba(249, 115, 22, 0.3); }
+
+    /* ─── PAINEL DIREITO: ESTOQUE, ESTEIRA E CICLO ─── */
+    .target-slot {
+      background: var(--card-sub);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .target-title { font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .target-coords {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--orange);
+      margin-top: 3px;
+    }
+
+    .btn-run-big {
+      background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 800;
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.15s;
+    }
+    .btn-run-big:hover { background: #22c55e; transform: translateY(-1px); }
+    .btn-run-big:active { transform: translateY(0); }
+    .btn-run-big:disabled { opacity: 0.35; pointer-events: none; }
+
+    /* CONSOLE */
+    .mini-console {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      height: 130px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: #8b949e;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .msg-tx { color: #38bdf8; }
+    .msg-rx { color: #4ade80; }
+    .msg-warn { color: #fbbf24; }
+    .msg-err { color: #f87171; }
+
+    /* Identidade visual alinhada ao painel InteliEsteira. */
+    :root {
+      --bg: #f4f6f3;
+      --card-bg: #ffffff;
+      --card-sub: #f7f9f8;
+      --border: #dfe6e3;
+      --text: #17252b;
+      --text-muted: #64747b;
+      --orange: #ff8152;
+      --blue: #349296;
+      --teal: #349296;
+      --green: #51b878;
+      --red: #dc5647;
+      --yellow: #9a7519;
+      --radius: 18px;
+      --radius-sm: 12px;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      display: block;
+      padding: 0 0 36px;
+      background: radial-gradient(ellipse at 86% -5%, #e2efea 0, transparent 38%), var(--bg);
+      color: var(--text);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    }
+    .container { width: min(1400px, calc(100% - 40px)); max-width: 1400px; margin: 22px auto 0; gap: 16px; }
+    .header, .quick-bar, .panel {
+      background: rgba(255,255,255,.96);
+      border: 1px solid rgba(223,230,227,.94);
+      border-radius: 20px;
+      box-shadow: 0 12px 32px rgba(23,37,43,.055);
+    }
+    .header { padding: 17px 22px; min-height: 82px; }
+    .logo-area { gap: 13px; }
+    .logo-badge { width: 46px; height: 46px; display:grid; place-items:center; padding:0; background:#fff0e9; border:1px solid #ffd5c5; border-radius:14px; color:#d9653a; }
+    .logo-badge i { font-size:1.45rem; }
+    .app-title { color:var(--text); font-size:1.12rem; font-weight:800; letter-spacing:-.025em; }
+    .app-desc { margin-top:3px; color:var(--text-muted); font-size:.78rem; }
+    .header-actions { gap:10px; }
+    .status-pill { padding:8px 13px; background:#f6f8f7; border-color:var(--border); color:var(--text-muted); }
+    .status-dot.online { box-shadow:0 0 0 4px rgba(81,184,120,.12); }
+    .btn { min-height:36px; padding:8px 13px; background:#fff; color:var(--text); border-color:var(--border); border-radius:10px; font-family:inherit; font-weight:700; }
+    .btn i, .btn-step i, .claw-big-btn i { font-size:.95em; }
+    .btn:hover { background:#f0f4f2; border-color:#c7d2ce; }
+    .btn:focus-visible, .btn-step:focus-visible, .claw-big-btn:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid rgba(52,146,150,.28); outline-offset:2px; }
+    .btn-orange { background:var(--orange); border-color:var(--orange); color:#fff; }
+    .btn-orange:hover { background:#ef7040; border-color:#ef7040; }
+    .btn-green { background:#e8f5ec; border-color:#b9dfc4; color:#287647; }
+    .btn-green:hover { background:#d9efdf; }
+    .btn-red { background:#fff0ee; border-color:#f1c0ba; color:#b23f34; }
+    .btn-red:hover { background:#ffe3df; }
+    .btn-yellow { background:#fff8e9; border-color:#f1d6aa; color:#72521d; }
+    .btn-yellow:hover { background:#fff1d2; }
+    .btn-sm { min-height:32px; padding:6px 10px; font-size:.73rem; }
+    .quick-bar { padding:10px 15px; }
+    .quick-group { gap:8px; }
+    .main-layout { grid-template-columns:minmax(0,1.04fr) minmax(440px,.96fr); gap:18px; align-items:start; }
+    .panel { padding:20px; gap:15px; min-width:0; }
+    .panel-header { flex-wrap:wrap; gap:8px 12px; border-color:var(--border); padding-bottom:12px; }
+    .main-layout > .panel:first-child > .panel-header {
+      display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"title restore" "hint pair" "toggle toggle"; align-items:center;
+    }
+    .main-layout > .panel:first-child > .panel-header > .panel-title { grid-area:title; }
+    .main-layout > .panel:first-child > .panel-header > span:nth-child(2) { grid-area:hint; line-height:1.45; }
+    .main-layout > .panel:first-child > .panel-header > button:nth-of-type(1) { grid-area:restore; }
+    .main-layout > .panel:first-child > .panel-header > label { grid-area:toggle; }
+    .main-layout > .panel:first-child > .panel-header > button:nth-of-type(2) { grid-area:pair; }
+    .panel-title { color:var(--text-muted); font-size:.74rem; letter-spacing:.085em; }
+    .motor-row, .target-slot { background:#fbfcfb; border-color:var(--border); border-radius:15px; }
+    .motor-row { padding:15px 16px; gap:11px; box-shadow:0 2px 8px rgba(23,37,43,.025); }
+    .motor-info { gap:9px; }
+    .motor-pin { padding:4px 7px; border-radius:7px; background:#eaf2ef; border-color:#d8e4df; color:#d96a3e; font-size:.65rem; font-weight:800; }
+    .motor-name { color:var(--text); font-size:.86rem; font-weight:800; }
+    .motor-deg { color:var(--text)!important; font-family:'JetBrains Mono',monospace; font-size:1.08rem; font-weight:800; }
+    .motor-actions { gap:8px; }
+    .motor-actions > div { flex-wrap:wrap; }
+    input[type=range] { height:7px; background:#dce4e1; border-radius:99px; }
+    input[type=range]::-webkit-slider-thumb { width:18px; height:18px; background:#fff; border:3px solid var(--orange); box-shadow:0 2px 7px rgba(23,37,43,.18); }
+    input[type=range]::-moz-range-thumb { width:13px; height:13px; background:#fff; border:3px solid var(--orange); box-shadow:0 2px 7px rgba(23,37,43,.18); }
+    .step-btns { gap:5px; flex-wrap:wrap; }
+    .btn-step { min-height:30px; padding:5px 9px; background:#fff; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-family:inherit; font-size:.7rem; font-weight:700; }
+    .btn-step:hover { color:var(--text); border-color:var(--orange); background:#fff7f3; }
+    .claw-card { padding:15px 16px; background:#fffaf0; border:1px solid #f1d6aa; border-radius:15px; }
+    .claw-card .motor-deg, .claw-card .motor-pin { color:#8a6715!important; }
+    .claw-card .motor-name { color:#72521d!important; }
+    .claw-actions-grid { gap:9px; }
+    .claw-big-btn { min-height:44px; padding:10px; border-radius:11px; font-family:inherit; font-size:.81rem; font-weight:800; }
+    .claw-big-btn.open { background:#e8f5ec; border-color:#b9dfc4; color:#287647; }
+    .claw-big-btn.open:hover { background:#d9efdf; }
+    .claw-big-btn.close { background:#fff0e9; border-color:#ffd5c5; color:#b9552e; }
+    .claw-big-btn.close:hover { background:#ffe4d8; }
+    .target-slot { padding:14px; gap:12px; }
+    .target-title { color:var(--text); font-size:.82rem; font-weight:800; }
+    .target-title i { color:var(--teal); }
+    .target-coords { color:#bd5b34; font-size:.7rem; }
+    .btn-run-big { min-height:48px; background:linear-gradient(135deg,#51b878 0%,#399761 100%); box-shadow:0 5px 16px rgba(57,151,97,.2); border-radius:12px; font-family:inherit; }
+    .btn-run-big:hover { background:#429f68; }
+    .btn-run-big:disabled { opacity:.44; }
+    .main-layout > .panel:nth-child(2) > div[style*="background:var(--card-sub)"],
+    .main-layout > .panel:nth-child(2) > div[style*="background: var(--card-sub)"] { background:#f7f9f8!important; border-color:var(--border)!important; border-radius:12px!important; }
+    .workflow-card, .sensor-card { padding:15px; background:#f7f9f8; border:1px solid var(--border); border-radius:15px; }
+    .workflow-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+    .workflow-heading h3 { margin:0; color:var(--text); font-size:.88rem; font-weight:800; }
+    .workflow-note { color:var(--text-muted); font-size:.74rem; line-height:1.55; }
+    .motion-control-row { display:grid; grid-template-columns:minmax(0,1fr) 190px auto auto; gap:10px; align-items:center; margin-bottom:12px; padding:12px 14px; background:#f7f9f8; border:1px solid var(--border); border-radius:13px; }
+    .motion-control-row label { display:grid; gap:3px; color:var(--text); font-size:.77rem; font-weight:800; }
+    .motion-control-row label span { color:var(--text-muted); font-size:.68rem; font-weight:500; }
+    .motion-control-row select { min-height:36px; padding:7px 9px; border:1px solid var(--border); border-radius:9px; background:#fff; color:var(--text); font:inherit; font-size:.75rem; }
+    .step-recorder { display:grid; grid-template-columns:minmax(120px,1fr) 94px auto; gap:8px; align-items:end; }
+    .step-recorder label, .sensor-settings label { display:block; margin-bottom:5px; color:var(--text-muted); font-size:.68rem; font-weight:800; }
+    .step-recorder input, .sensor-settings input, .sensor-settings select { width:100%; min-width:0; min-height:36px; padding:8px 10px; border:1px solid var(--border); border-radius:9px; background:#fff; color:var(--text); font:inherit; font-size:.76rem; }
+    .sequence-list { list-style:none; display:flex; flex-direction:column; gap:6px; margin:10px 0 0; padding:0; }
+    .sequence-list li { display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:9px; align-items:center; padding:9px 10px; border:1px solid var(--border); border-radius:10px; background:#fff; font-size:.75rem; }
+    .sequence-index { display:grid; place-items:center; width:26px; height:26px; border-radius:8px; background:#e2efea; color:#287d81; font-weight:900; }
+    .sequence-angles { display:block; margin-top:3px; color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-size:.64rem; }
+    .sequence-actions { display:flex; gap:4px; }
+    .sequence-actions button { display:grid; place-items:center; width:29px; height:29px; padding:0; border:1px solid transparent; border-radius:8px; background:#f0f4f2; color:var(--text-muted); cursor:pointer; }
+    .sequence-actions button:hover:not(:disabled) { border-color:#d2ded9; background:#e2efea; color:var(--text); }
+    .sequence-actions button:disabled { opacity:.38; cursor:default; }
+    .sequence-actions .sequence-test { display:flex; width:auto; min-width:66px; gap:5px; padding:0 8px; background:#e8f5ec; color:#287647; font-family:inherit; font-size:.68rem; font-weight:800; }
+    .sequence-actions .sequence-test:hover:not(:disabled) { border-color:#b9dfc4; background:#d9efdf; color:#205f3a; }
+    .sensor-settings { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:11px; }
+    .sensor-toggle, .repeat-toggle { display:flex; align-items:center; gap:9px; color:var(--text); font-size:.77rem; font-weight:800; }
+    .sensor-toggle input, .repeat-toggle input { width:16px; height:16px; accent-color:var(--teal); }
+    .sensor-state { color:var(--text-muted); font-size:.7rem; font-weight:700; }
+    .flow-actions { display:flex; gap:8px; margin:10px 0 0; }
+    .mini-console { height:168px; padding:11px 12px; border-color:#193238; border-radius:11px; background:#122126; color:#c3d2d1; font-size:.68rem; line-height:1.5; }
+    .msg-tx { color:#80d2dc; }
+    .msg-rx { color:#81d59e; }
+    .msg-warn { color:#f4c56c; }
+    .msg-err { color:#ff9588; }
+    .main-layout kbd { padding:2px 5px; border:1px solid #dfe6e3; border-radius:5px; background:#fff; font:700 .67rem 'JetBrains Mono',monospace!important; }
+    .main-layout > .panel:nth-child(2) > div[style*="background:var(--card-sub)"] { line-height:1.7; }
+    .view-tabs { display:flex; width:fit-content; max-width:100%; gap:5px; margin:1px auto 0; padding:6px; overflow-x:auto; border:1px solid rgba(223,230,227,.9); border-radius:24px; background:rgba(255,255,255,.88); box-shadow:0 8px 22px rgba(23,37,43,.05); }
+    .view-tab { display:flex; align-items:center; justify-content:center; gap:8px; min-height:42px; padding:9px 18px; border:0; border-radius:18px; background:transparent; color:var(--text-muted); font-family:inherit; font-size:.79rem; font-weight:800; cursor:pointer; white-space:nowrap; transition:background .15s ease,color .15s ease,transform .15s ease; }
+    .view-tab i { font-size:1rem; }
+    .view-tab:hover { background:#f0f4f2; color:var(--text); }
+    .view-tab.active { background:var(--orange); color:#fff; box-shadow:0 3px 9px rgba(255,129,82,.2); }
+    .keyboard-hint { display:flex; align-items:center; gap:15px; width:min(1080px,100%); margin:0 auto; padding:9px 13px; border:1px solid #d7e7e2; border-radius:13px; background:rgba(238,246,242,.9); color:var(--text-muted); }
+    .keyboard-hint[hidden] { display:none; }
+    .keyboard-hint-title { display:flex; align-items:center; gap:7px; flex:0 0 auto; color:#287d81; font-size:.72rem; font-weight:900; }
+    .keyboard-hint-title i { font-size:1rem; }
+    .keyboard-hint-keys { display:flex; align-items:center; flex-wrap:wrap; gap:6px 13px; }
+    .keyboard-hint-keys > span { display:inline-flex; align-items:center; gap:4px; font-size:.67rem; white-space:nowrap; }
+    .keyboard-hint kbd { min-width:20px; padding:2px 5px; border:1px solid #cbd9d4; border-radius:5px; background:#fff; color:var(--text); text-align:center; font:800 .64rem 'JetBrains Mono',monospace; }
+    .main-layout { display:block; }
+    .app-view { display:none; width:min(1080px,100%); margin:0 auto; }
+    .app-view.active { display:flex; }
+    .pose-summary { display:grid; grid-template-columns:auto 1fr; gap:5px 12px; align-items:center; padding:12px 14px; border:1px solid #d7e7e2; border-radius:12px; background:#eef6f2; }
+    .pose-summary-label { display:flex; align-items:center; gap:6px; color:#287d81; font-size:.72rem; font-weight:900; }
+    .pose-summary > strong { color:var(--text); font:700 .72rem 'JetBrains Mono',monospace; text-align:right; }
+    .pose-summary .workflow-note { grid-column:1 / -1; }
+    .serial-panel { width:min(1080px,100%); margin:0 auto; gap:10px; }
+    .serial-panel .panel-header { margin-bottom:0; padding-bottom:9px; }
+    .serial-panel .panel-title { display:flex; align-items:center; gap:7px; }
+    .serial-panel .panel-title i { color:var(--teal); font-size:1rem; }
+    .serial-panel-actions { display:flex; align-items:center; gap:10px; }
+    .serial-state { color:var(--text-muted); font-size:.7rem; font-weight:700; }
+    @media (max-width: 1050px) {
+      .container { width:min(calc(100% - 28px), 900px); }
+    }
+    @media (max-width: 680px) {
+      .container { width:calc(100% - 20px); margin-top:10px; gap:10px; }
+      .header { padding:13px 14px; border-radius:16px; }
+      .header-actions { width:100%; justify-content:space-between; }
+      .quick-bar { align-items:stretch; padding:9px; }
+      .quick-group { flex-wrap:wrap; }
+      .quick-group .btn { flex:1 1 auto; }
+      .panel { padding:14px; gap:12px; }
+      .serial-panel { padding:13px; }
+      .serial-panel-actions { gap:7px; }
+      .view-tabs { width:100%; justify-content:flex-start; border-radius:14px; }
+      .view-tab { flex:1 0 auto; min-height:40px; padding:8px 12px; }
+      .keyboard-hint { align-items:flex-start; flex-direction:column; gap:7px; }
+      .keyboard-hint-keys { gap:6px 9px; }
+      .main-layout > .panel:first-child > .panel-header { grid-template-columns:1fr; grid-template-areas:"title" "hint" "restore" "toggle" "pair"; }
+      .main-layout > .panel:first-child > .panel-header > .btn { width:100%; }
+      .motor-row { padding:12px; }
+      .motor-actions { align-items:flex-start; flex-direction:column; }
+      .step-recorder { grid-template-columns:minmax(0,1fr) 86px; }
+      .step-recorder button { grid-column:1 / -1; width:100%; }
+      .target-slot { align-items:flex-start; flex-direction:column; }
+      .target-slot > div:last-child { width:100%; }
+      .target-slot > div:last-child .btn { flex:1; }
+      .sensor-settings { grid-template-columns:1fr 1fr; }
+      .motion-control-row { grid-template-columns:1fr 1fr; }
+      .motion-control-row label { grid-column:1 / -1; }
+      .motion-control-row button { width:100%; }
+      .flow-actions { align-items:stretch; }
+      .flow-actions .btn-run-big { min-width:0; }
+    }
+    @media (max-width: 420px) {
+      .view-tab { flex-direction:column; gap:3px; min-width:68px; font-size:.68rem; }
+      .sensor-settings { grid-template-columns:1fr; }
+      .claw-actions-grid { grid-template-columns:1fr; }
+      .flow-actions { flex-wrap:wrap; }
+      .flow-actions > * { flex:1 1 100%!important; }
+      .pose-summary { grid-template-columns:1fr; }
+      .pose-summary > strong { text-align:left; }
+      .sequence-list li { grid-template-columns:26px minmax(0,1fr) auto; gap:6px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo-area">
+      <div class="logo-badge"><i class="bi bi-robot" aria-hidden="true"></i></div>
+      <div>
+        <div class="app-title">RoboArm Controller</div>
+        <div class="app-desc">Painel de Calibração e Operação Simplificado</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill">
+        <div id="dot" class="status-dot"></div>
+        <span id="chipText">Desconectado</span>
+      </div>
+      <button class="btn btn-orange" id="btnConn" onclick="toggleConnect()">Conectar USB</button>
+    </div>
+  </div>
+
+  <!-- BARRA DE EMERGÊNCIA E SEGURANÇA -->
+  <div class="quick-bar">
+    <div class="quick-group">
+      <button class="btn btn-red btn-sm" id="btnFreeAll" onclick="sendCmd('FREE')" title="Corta sinal elétrico de todos os servos imediatamente" disabled>
+        <i class="bi bi-lightning-charge-fill" aria-hidden="true"></i> Soltar servos (FREE)
+      </button>
+      <button class="btn btn-sm" onclick="sendCmd('HOLD')" title="Trava e energiza os servos" disabled>
+        <i class="bi bi-lock-fill" aria-hidden="true"></i> Travar
+      </button>
+      <button class="btn btn-sm" onclick="testSavedPoint('N')" title="Move suavemente para o ponto neutro gravado" disabled>
+        <i class="bi bi-house-door-fill" aria-hidden="true"></i> Ir ao neutro
+      </button>
+    </div>
+    <div class="quick-group">
+      <button class="btn btn-sm" onclick="sendCmd('?')" title="Atualiza leitura do Arduino" disabled>
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Sincronizar
+      </button>
+      <button class="btn btn-sm" id="btnSyncPose" onclick="confirmPhysicalPose()" title="Confirma que o braço está fisicamente na pose neutra configurada; não move os servos" disabled>
+        <i class="bi bi-crosshair" aria-hidden="true"></i> Confirmar pose inicial
+      </button>
+      <button class="btn btn-sm" id="btnValidateAuto" onclick="validateAutomaticCalibration()" title="Registra a conferência dos pontos e limites na EEPROM; não move os servos" disabled>
+        <i class="bi bi-shield-check" aria-hidden="true"></i> Validar para operação coletiva
+      </button>
+      <span id="autoValidationStatus" class="serial-state" role="status">EEPROM ainda não consultada</span>
+    </div>
+  </div>
+
+  <aside class="keyboard-hint" id="keyboardHint" aria-label="Atalhos de movimentação do Arduino" hidden>
+    <div class="keyboard-hint-title"><i class="bi bi-keyboard" aria-hidden="true"></i><span>Movimentação pelo teclado</span></div>
+    <div class="keyboard-hint-keys">
+      <span><kbd>A</kbd><kbd>D</kbd> Base −/+ 2°</span>
+      <span><kbd>W</kbd><kbd>S</kbd> Ombro +/− 2°</span>
+      <span><kbd>Q</kbd><kbd>E</kbd> Cotovelo +/− 2°</span>
+      <span><kbd>J</kbd><kbd>L</kbd> Garra −/+ 2°</span>
+      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Salvar Y / X / neutro</span>
+    </div>
+  </aside>
+
+  <nav class="view-tabs" role="tablist" aria-label="Áreas do calibrador">
+    <button class="view-tab active" id="tab-calibration" role="tab" aria-selected="true" aria-controls="view-calibration" onclick="showAppView('calibration')"><i class="bi bi-sliders" aria-hidden="true"></i><span>Calibração</span></button>
+    <button class="view-tab" id="tab-flow" role="tab" aria-selected="false" aria-controls="view-flow" onclick="showAppView('flow')"><i class="bi bi-diagram-3" aria-hidden="true"></i><span>Fluxo</span></button>
+    <button class="view-tab" id="tab-points" role="tab" aria-selected="false" aria-controls="view-points" onclick="showAppView('points')"><i class="bi bi-geo-alt" aria-hidden="true"></i><span>Pontos</span></button>
+  </nav>
+
+  <!-- CORPO PRINCIPAL -->
+  <div class="main-layout">
+
+    <!-- COLUNA 1: OS 4 MOTORES (DIRETO E SEM CONFUSÃO) -->
+    <section class="panel app-view active" id="view-calibration" role="tabpanel" aria-labelledby="tab-calibration">
+      <div class="panel-header">
+        <span class="panel-title">Calibração manual dos motores</span>
+        <span style="font-size:0.7rem; color:var(--text-muted);">Faixa ampla: avance aos poucos e pare antes de forçar</span>
+        <button class="btn btn-sm" onclick="resetAxisLimits()" disabled>Restaurar faixas amplas</button>
+        <label style="font-size:0.72rem; color:var(--text-muted); display:flex; gap:6px; align-items:center;">
+          <input type="checkbox" id="jointPair" checked disabled>
+          Ombro e cotovelo em movimento conjunto (ajuste os dois alvos)
+        </label>
+        <button class="btn btn-sm" id="btnPairMove" onclick="moveJointPair()" disabled>Mover ombro + cotovelo juntos</button>
+      </div>
+
+      <!-- 1. BASE (PINO 10) -->
+      <div class="motor-row">
+        <div class="motor-top">
+          <div class="motor-info">
+            <span class="motor-pin">Pino 10</span>
+            <span class="motor-name">Base Giratória</span>
+          </div>
+          <span class="motor-deg" id="valB">90°</span>
+        </div>
+        <input type="range" id="slB" min="0" max="180" value="90" oninput="setAngle('B', this.value)" disabled>
+        <div class="motor-actions">
+          <span style="font-size:0.7rem; color:var(--text-muted);">Giro Horizontal</span>
+          <div class="step-btns">
+            <button class="btn-step" onclick="nudge('B', -5)" disabled>-5°</button>
+            <button class="btn-step" onclick="nudge('B', -1)" disabled>-1°</button>
+            <button class="btn-step" onclick="nudge('B', 1)" disabled>+1°</button>
+            <button class="btn-step" onclick="nudge('B', 5)" disabled>+5°</button>
+          </div>
+          <div class="step-btns" style="margin-top:6px;">
+            <button class="btn-step" onclick="setAxisLimit('B', 'min')" disabled>Gravar MIN atual</button>
+            <button class="btn-step" onclick="setAxisLimit('B', 'max')" disabled>Gravar MAX atual</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. BRAÇO DIREITO (PINO 11) -->
+      <div class="motor-row">
+        <div class="motor-top">
+          <div class="motor-info">
+            <span class="motor-pin">Pino 11</span>
+            <span class="motor-name">Braço Principal (Torre)</span>
+          </div>
+          <span class="motor-deg" id="valA">80°</span>
+        </div>
+        <input type="range" id="slA" min="55" max="180" value="80" oninput="setAngle('A', this.value)" disabled>
+        <div class="motor-actions">
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-sm btn-red" onclick="sendCmd('A:FREE')" title="Desliga apenas o motor do braço" disabled><i class="bi bi-volume-mute-fill" aria-hidden="true"></i> Desligar</button>
+          </div>
+          <div class="step-btns">
+            <button class="btn-step" onclick="setAngle('A', 75)" disabled>75°</button>
+            <button class="btn-step" onclick="setAngle('A', 80)" disabled>80°</button>
+            <button class="btn-step" onclick="setAngle('A', 85)" disabled>85°</button>
+            <button class="btn-step" onclick="nudge('A', -1)" disabled>-1°</button>
+            <button class="btn-step" onclick="nudge('A', 1)" disabled>+1°</button>
+          </div>
+          <div class="step-btns" style="margin-top:6px;">
+            <button class="btn-step" onclick="setAxisLimit('A', 'min')" disabled>Gravar MIN atual</button>
+            <button class="btn-step" onclick="setAxisLimit('A', 'max')" disabled>Gravar MAX atual</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. COTOVELO ESQUERDO (PINO 6) -->
+      <div class="motor-row">
+        <div class="motor-top">
+          <div class="motor-info">
+            <span class="motor-pin">Pino 6</span>
+            <span class="motor-name">Cotovelo (Alavanca)</span>
+          </div>
+          <span class="motor-deg" id="valC" style="color:var(--blue);">80°</span>
+        </div>
+        <input type="range" id="slC" min="55" max="180" value="80" oninput="setAngle('C', this.value)" disabled>
+        <div class="motor-actions">
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-sm btn-red" onclick="sendCmd('C:FREE')" title="Corta sinal para não esquentar" disabled><i class="bi bi-volume-mute-fill" aria-hidden="true"></i> Desligar</button>
+            <button class="btn btn-sm" onclick="sendCmd('C:HOLD')" title="Ativa sinal do pino 6" disabled><i class="bi bi-plug-fill" aria-hidden="true"></i> Ligar</button>
+          </div>
+          <div class="step-btns">
+            <button class="btn-step" onclick="setAngle('C', 75)" disabled>75°</button>
+            <button class="btn-step" onclick="setAngle('C', 80)" disabled>80°</button>
+            <button class="btn-step" onclick="setAngle('C', 85)" disabled>85°</button>
+            <button class="btn-step" onclick="nudge('C', -1)" disabled>-1°</button>
+            <button class="btn-step" onclick="nudge('C', 1)" disabled>+1°</button>
+          </div>
+          <div class="step-btns" style="margin-top:6px;">
+            <button class="btn-step" onclick="setAxisLimit('C', 'min')" disabled>Gravar MIN atual</button>
+            <button class="btn-step" onclick="setAxisLimit('C', 'max')" disabled>Gravar MAX atual</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. GARRA (PINO 3) — DIRETA E PRÁTICA -->
+      <div class="claw-card">
+        <div class="motor-top">
+          <div class="motor-info">
+            <span class="motor-pin" style="color:var(--yellow);">Pino 3</span>
+            <span class="motor-name" style="color:#fef08a;">Garra de Pegar Peça</span>
+          </div>
+          <span class="motor-deg" id="valG" style="color:var(--yellow);">120°</span>
+        </div>
+
+        <!-- DOIS BOTÕES GRANDES DE AÇÃO -->
+        <div class="claw-actions-grid">
+          <button class="claw-big-btn open" onclick="sendCmd('G:OPEN')" disabled>
+            <i class="bi bi-arrows-angle-expand" aria-hidden="true"></i> Abrir (158° gravado)
+          </button>
+          <button class="claw-big-btn close" onclick="sendCmd('G:CLOSE')" disabled>
+            <i class="bi bi-hand-index-thumb-fill" aria-hidden="true"></i> Fechar (86° gravado)
+          </button>
+        </div>
+        <p class="workflow-note" style="margin:-4px 0 0">A garra parte do ângulo atual e se move gradualmente até o alvo.</p>
+
+        <input type="range" id="slG" min="85" max="180" value="120" oninput="setAngle('G', this.value)" disabled>
+        <div class="step-btns" style="margin:8px 0;">
+          <button class="btn-step" onclick="saveGripEndpoint('open')" disabled><i class="bi bi-floppy" aria-hidden="true"></i> Gravar ângulo ABERTO</button>
+          <button class="btn-step" onclick="saveGripEndpoint('closed')" disabled><i class="bi bi-floppy" aria-hidden="true"></i> Gravar ângulo FECHADO</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <button class="btn btn-sm btn-red" onclick="sendCmd('G:FREE')" style="font-size:0.68rem;" disabled><i class="bi bi-volume-mute-fill" aria-hidden="true"></i> Silenciar garra</button>
+          <div class="step-btns">
+            <button class="btn-step" onclick="setAngle('G', 85)" disabled>85°</button>
+            <button class="btn-step" onclick="setAngle('G', 120)" disabled>120°</button>
+            <button class="btn-step" onclick="setAngle('G', 150)" disabled>150°</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- CONFIGURAÇÃO DO CICLO -->
+    <section class="panel app-view" id="view-flow" role="tabpanel" aria-labelledby="tab-flow" hidden>
+      <div class="panel-header">
+        <span class="panel-title">Programar fluxo de movimentos</span>
+        <span style="font-size:0.74rem; color:var(--text-muted);">Configure pegar, entregar e repetição</span>
+      </div>
+
+      <div class="pose-summary" id="poseSummary" aria-live="polite">
+        <span class="pose-summary-label"><i class="bi bi-bullseye" aria-hidden="true"></i> Alvos atuais para gravar</span>
+        <strong id="poseSummaryValues">Base 90° · Ombro 80° · Cotovelo 80° · Garra 120°</strong>
+        <span class="workflow-note">Ajuste na tela Calibração; volte aqui e grave cada posição na ordem desejada.</span>
+      </div>
+
+      <div class="sensor-card" id="flowPoseNotice" style="margin:10px 0" hidden>
+        <div class="workflow-heading"><h3>Preparar teste seguro</h3></div>
+        <p class="workflow-note" id="flowPoseMessage" style="margin:0 0 8px"></p>
+        <button class="btn btn-sm" id="btnSyncPoseFlow" type="button" onclick="confirmPhysicalPose()" disabled><i class="bi bi-crosshair" aria-hidden="true"></i> Confirmar pose inicial e liberar testes</button>
+      </div>
+
+      <div class="motion-control-row">
+        <label for="motionSpeed">Suavidade dos movimentos gravados<span>Controla a pausa entre incrementos de 1°. Mais ms = movimento mais lento.</span></label>
+        <select id="motionSpeed" onchange="saveMotionSettings()">
+          <option value="16">Rápido · 16 ms/grau</option>
+          <option value="24" selected>Suave · 24 ms/grau</option>
+          <option value="32">Mais suave · 32 ms/grau</option>
+        </select>
+        <button class="btn btn-sm" type="button" onclick="document.getElementById('workflowCsvFile').click()" title="Importa passos, neutro e configurações de fluxo de um CSV"><i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i> Importar CSV</button>
+        <input id="workflowCsvFile" type="file" accept=".csv,text/csv" hidden onchange="importWorkflowCsv(this.files && this.files[0])">
+        <button class="btn btn-sm" type="button" onclick="loadPlannedMockup()" title="Carrega os passos planejados de exemplo sem mover o braço"><i class="bi bi-card-list" aria-hidden="true"></i> Mockup</button>
+      </div>
+
+      <section class="workflow-card" aria-label="Sequência de movimentos">
+        <div class="workflow-heading"><h3>Etapa 1 · Pegar a caixa</h3><span id="pickupCount" class="sensor-state">0 passos</span></div>
+        <div class="step-recorder">
+          <div><label for="pickupName">Nome do passo</label><input id="pickupName" maxlength="36" placeholder="Ex.: aproximar por cima"></div>
+          <div><label for="pickupPause">Pausa (ms)</label><input id="pickupPause" type="number" min="0" max="10000" value="300"></div>
+          <button class="btn btn-orange btn-sm" onclick="recordStep('pickup')" disabled><i class="bi bi-plus-lg" aria-hidden="true"></i> Gravar ângulos atuais</button>
+        </div>
+        <ol id="pickupSteps" class="sequence-list"></ol>
+
+        <div class="workflow-heading" style="margin-top:14px"><h3>Etapa 2 · Entregar na esteira</h3><span id="deliveryCount" class="sensor-state">0 passos</span></div>
+        <div class="step-recorder">
+          <div><label for="deliveryName">Nome do passo</label><input id="deliveryName" maxlength="36" placeholder="Ex.: sair da caixa"></div>
+          <div><label for="deliveryPause">Pausa (ms)</label><input id="deliveryPause" type="number" min="0" max="10000" value="300"></div>
+          <button class="btn btn-orange btn-sm" onclick="recordStep('delivery')" disabled><i class="bi bi-plus-lg" aria-hidden="true"></i> Gravar ângulos atuais</button>
+        </div>
+        <ol id="deliverySteps" class="sequence-list"></ol>
+        <p class="workflow-note" style="margin:9px 0 0">Cada passo grava os quatro ângulos dos controles à esquerda. Use “Testar” na linha para executar apenas aquele passo. Inclua a abertura/fechamento da garra nos passos correspondentes. O ciclo completo começa e termina no ponto neutro.</p>
+      </section>
+
+      <section class="sensor-card" aria-label="Sensor de presença da caixa">
+        <div class="workflow-heading"><h3>Início automático · Ultrassônico (opcional)</h3><span id="sensorStatus" class="sensor-state">Desativado · modo manual</span></div>
+        <label class="sensor-toggle"><input id="sensorEnabled" type="checkbox" onchange="saveSensorSettings()"> Ativar início automático quando uma caixa for detectada</label>
+        <div class="sensor-settings">
+          <div><label for="sensorDistance">Distância máxima (cm)</label><input id="sensorDistance" type="number" min="2" max="100" value="10" onchange="saveSensorSettings()"></div>
+          <div><label for="sensorStable">Confirmação contínua</label><select id="sensorStable" onchange="saveSensorSettings()"><option value="3000">3 segundos</option><option value="4000">4 segundos</option><option value="5000">5 segundos</option></select></div>
+        </div>
+        <p class="workflow-note" style="margin:8px 0 0">Para calibrar agora, deixe desmarcado: “Executar fluxo gravado” inicia manualmente e funciona sem ultrassônico. O HC-SR04 em D8 (Trig) e D9 (Echo) só será necessário se você ativar o início automático.</p>
+      </section>
+
+      <label class="repeat-toggle"><input id="repeatFlow" type="checkbox" onchange="saveSequence()"> Repetir: neutro → pegar → entregar → neutro</label>
+      <div class="workflow-note" style="margin-top:-5px">Com o sensor desativado, a repetição acontece continuamente até você apertar “Parar”.</div>
+      <div class="flow-actions">
+        <button class="btn-run-big" id="btnRunFlow" style="flex:1;" onclick="startWorkflow('manual')" disabled><i class="bi bi-play-fill" aria-hidden="true"></i> Executar fluxo gravado</button>
+        <button class="btn btn-red btn-sm" id="btnStopFlow" onclick="stopWorkflow()" title="Interrompe o fluxo atual" disabled><i class="bi bi-stop-fill" aria-hidden="true"></i> Parar</button>
+      </div>
+      <div id="flowStatus" class="workflow-note">Grave pelo menos um passo para pegar e um para entregar.</div>
+      <div class="flow-actions">
+        <button class="btn btn-sm" id="btnExportCsv" onclick="exportCalibrationCsv()" disabled><i class="bi bi-filetype-csv" aria-hidden="true"></i> Exportar calibração</button>
+      </div>
+
+    </section>
+
+    <!-- PONTOS SALVOS NO ARDUINO -->
+    <section class="panel app-view" id="view-points" role="tabpanel" aria-labelledby="tab-points" hidden>
+      <div class="panel-header">
+        <span class="panel-title">Posições memorizadas no Arduino</span>
+        <span style="font-size:0.74rem; color:var(--text-muted);">Teste, grave ou atualize cada referência</span>
+      </div>
+      <!-- PONTO Y: ESTOQUE -->
+      <div class="target-slot">
+        <div>
+          <div class="target-title"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i> Ponto Y · Estoque / pegar</div>
+          <div class="target-coords" id="coordsY">B:150 Braco:80 Cotovelo:80 G:85</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sm" onclick="testSavedPoint('Y')" title="Move suavemente para o ponto de pegar salvo" disabled><i class="bi bi-play-circle" aria-hidden="true"></i> Testar</button>
+          <button class="btn btn-orange btn-sm" onclick="sendCmd('Y')" title="Salva os 4 ângulos atuais como ponto de pegar" disabled><i class="bi bi-floppy" aria-hidden="true"></i> Gravar</button>
+        </div>
+      </div>
+
+      <!-- PONTO X: ESTEIRA -->
+      <div class="target-slot">
+        <div>
+          <div class="target-title"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i> Ponto X · Esteira / soltar</div>
+          <div class="target-coords" id="coordsX">B:20 Braco:80 Cotovelo:80 G:120</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sm" onclick="testSavedPoint('X')" title="Move suavemente para o ponto de entregar salvo" disabled><i class="bi bi-play-circle" aria-hidden="true"></i> Testar</button>
+          <button class="btn btn-orange btn-sm" onclick="sendCmd('X')" title="Salva os 4 ângulos atuais como ponto de soltar" disabled><i class="bi bi-floppy" aria-hidden="true"></i> Gravar</button>
+        </div>
+      </div>
+
+      <!-- PONTO NEUTRO -->
+      <div class="target-slot">
+        <div>
+          <div class="target-title"><i class="bi bi-crosshair" aria-hidden="true"></i> Ponto neutro · repouso</div>
+          <div class="target-coords" id="coordsN">B:90 Braco:80 Cotovelo:80 G:120</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sm" onclick="testSavedPoint('N')" title="Move suavemente para o ponto neutro salvo" disabled><i class="bi bi-play-circle" aria-hidden="true"></i> Testar</button>
+          <button class="btn btn-orange btn-sm" onclick="sendCmd('N')" title="Salva os 4 ângulos atuais como ponto neutro" disabled><i class="bi bi-floppy" aria-hidden="true"></i> Gravar neutro</button>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <section class="panel serial-panel" aria-label="Monitor serial do Arduino">
+    <div class="panel-header">
+      <span class="panel-title"><i class="bi bi-terminal" aria-hidden="true"></i> Monitor serial</span>
+      <div class="serial-panel-actions">
+        <span class="serial-state" id="serialStatus">Aguardando conexão</span>
+        <button class="btn-step" onclick="clearLog()"><i class="bi bi-trash3" aria-hidden="true"></i> Limpar</button>
+      </div>
+    </div>
+    <div class="mini-console" id="term" aria-live="polite">Aguardando conexão com o Arduino...</div>
+  </section>
+
+</div>
+
+<script>
+  let port = null;
+  let reader = null;
+  let writer = null;
+  let keepReading = false;
+  let serialReady = false;
+  let poseReferenced = false;
+  let poseSyncSupported = false;
+  let autoValidationResolver = null;
+  let statusPollTimer = null;
+  let statusPollAttempts = 0;
+
+  // Estado atual dos ângulos
+  const ang = { B: 90, A: 80, C: 80, G: 120 };
+
+  const lim = {
+    B: [0, 180],
+    A: [66, 176], // Limites da calibração oficial de 16/10/2026
+    C: [55, 180], // Faixa ampla de comando; observar o batente mecanico
+    G: [85, 180]  // 85° fecha; testar abertura com cuidado
+  };
+
+  const gripCal = { open: 158, closed: 86 };
+  const FLOW_STORAGE_KEY = 'mearm-flow-v3';
+  const LEGACY_FLOW_STORAGE_KEYS = ['mearm-flow-v2', 'mearm-flow-v1'];
+  const OFFICIAL_FLOW = {
+    pickup: [
+      { name:'aproxima e abre', B:164, A:80, C:140, G:180, pauseMs:300 },
+      { name:'colado', B:164, A:126, C:110, G:180, pauseMs:300 },
+      { name:'fecha', B:164, A:126, C:110, G:85, pauseMs:300 },
+      { name:'sobe', B:164, A:106, C:126, G:85, pauseMs:300 }
+    ],
+    delivery: [
+      { name:'chega perto altura', B:90, A:114, C:118, G:101, pauseMs:300 },
+      { name:'Deixa', B:90, A:138, C:112, G:101, pauseMs:300 },
+      { name:'abre', B:90, A:138, C:112, G:141, pauseMs:300 },
+      { name:'foge', B:90, A:94, C:120, G:123, pauseMs:300 }
+    ],
+    neutral: { B:90, A:94, C:120, G:123 },
+    repeat: true,
+    motionDelayMs: 24,
+    sensor: { enabled:true, distanceCm:10, stableMs:4000 }
+  };
+  const savedPoints = { Y: null, X: null, N: null };
+  function showAppView(name) {
+    const activeId = `view-${name}`;
+    document.querySelectorAll('.app-view').forEach(view => {
+      const active = view.id === activeId;
+      view.classList.toggle('active', active);
+      view.hidden = !active;
+    });
+    document.querySelectorAll('.view-tab').forEach(tab => {
+      const active = tab.id === `tab-${name}`;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      tab.tabIndex = active ? 0 : -1;
+    });
+  }
+
+  function updatePoseSummary() {
+    const el = document.getElementById('poseSummaryValues');
+    if (el) el.textContent = `Base ${ang.B}° · Ombro ${ang.A}° · Cotovelo ${ang.C}° · Garra ${ang.G}°`;
+  }
+
+  function getNeutralPose() {
+    return savedPoints.N || workflow?.neutral || null;
+  }
+
+  async function confirmPhysicalPose() {
+    if (!port || !serialReady) return;
+    if (!poseSyncSupported) return log('O firmware conectado não reconhece sincronização segura. Carregue a versão atual do arquivo .ino antes de testar.', 'err');
+    const pose = workflow?.neutral || savedPoints.N;
+    if (!pose) return log('Defina ou importe o ponto neutro antes de confirmar a pose inicial.', 'warn');
+    const yes = confirm(`Coloque o braço manualmente no ponto neutro configurado (B ${pose.B}°, ombro ${pose.A}°, cotovelo ${pose.C}°, garra ${pose.G}°), com os servos soltos. Confirma que ele já está nessa posição? Este botão só sincroniza a referência; não move os servos.`);
+    if (!yes) return;
+    await sendCmd(`SYNC:${pose.B}:${pose.A}:${pose.C}:${pose.G}`);
+  }
+
+  async function validateAutomaticCalibration() {
+    if (!port || !serialReady) return log('Conecte o Arduino antes de validar a calibração para o coletivo.', 'warn');
+    if (flowRunning) return log('Encerre os movimentos antes de validar a calibração.', 'warn');
+    if (!confirm('Confirme que você já salvou e testou os pontos Y, X e neutro, os limites e a abertura/fechamento da garra. O comando registra essa conferência na EEPROM e não move os servos.')) return;
+    const status = document.getElementById('autoValidationStatus');
+    status.textContent = 'Validando os dados salvos no Arduino…';
+    try {
+      const result = await new Promise(async (resolve, reject) => {
+        const timer = setTimeout(() => { autoValidationResolver = null; reject(new Error('O firmware não confirmou a validação. Atualize o .ino para a versão atual.')); }, 3000);
+        autoValidationResolver = (valid) => { clearTimeout(timer); autoValidationResolver = null; resolve(valid); };
+        if (!await sendCmd('AUTO:VALIDAR')) {
+          clearTimeout(timer); autoValidationResolver = null; reject(new Error('Falha ao enviar AUTO:VALIDAR.'));
+        }
+      });
+      status.textContent = result ? 'EEPROM validada para a operação coletiva' : 'Calibração incompleta; revise Y, X, neutro, limites e garra';
+      log(result ? 'Calibração EEPROM validada. O fluxo coletivo agora pode aceitar movimentos do perfil salvo.' : 'O Arduino recusou a validação da EEPROM; revise os pontos e limites.', result ? 'rx' : 'err');
+    } catch (error) {
+      status.textContent = 'Validação não confirmada';
+      log(error.message, 'err');
+    }
+  }
+
+  function syncPoseControls(pose) {
+    for (const axis of ['B', 'A', 'C', 'G']) {
+      if (!Number.isFinite(Number(pose[axis]))) continue;
+      ang[axis] = Math.max(lim[axis][0], Math.min(lim[axis][1], Number(pose[axis])));
+      const slider = document.getElementById('sl' + axis);
+      const value = document.getElementById('val' + axis);
+      if (slider) slider.value = ang[axis];
+      if (value) value.innerText = ang[axis] + '°';
+    }
+    updatePoseSummary();
+  }
+
+  function syncGripControl(value) {
+    ang.G = Math.max(lim.G[0], Math.min(lim.G[1], Number(value)));
+    const slider = document.getElementById('slG');
+    const display = document.getElementById('valG');
+    if (slider) slider.value = ang.G;
+    if (display) display.innerText = ang.G + '°';
+    updatePoseSummary();
+  }
+
+  async function testSavedPoint(key) {
+    if (!port || !serialReady || !poseReferenced) return log('Conecte e confirme a pose física inicial antes de testar um ponto.', 'warn');
+    if (flowRunning) return;
+    const pose = savedPoints[key];
+    if (!pose) return log('Sincronize os pontos do Arduino antes de testar este ponto.', 'warn');
+    const label = key === 'Y' ? 'pegar' : key === 'X' ? 'entregar' : 'neutro';
+    flowRunning = true;
+    stopRequested = false;
+    updateFlowControls();
+    document.getElementById('flowStatus').innerText = `Movendo suavemente para o ponto ${label}…`;
+    try {
+      await moveToPose(pose);
+      if (!stopRequested) log(`Chegou ao ponto ${label}; controles sincronizados com a posição gravada.`, 'rx');
+    } catch (error) {
+      if (!stopRequested) log(error.message, 'err');
+    } finally {
+      flowRunning = false;
+      updateFlowControls();
+    }
+  }
+
+  let workflow = loadWorkflow();
+  let flowRunning = false;
+  let stopRequested = false;
+  let sensorPresent = false;
+  let sensorPending = false;
+  let sensorWaitPhase = null;
+  let poseAckResolver = null;
+  const sensorWaiters = [];
+
+  function loadWorkflow() {
+    const fallback = JSON.parse(JSON.stringify(OFFICIAL_FLOW));
+    try {
+      const current = JSON.parse(localStorage.getItem(FLOW_STORAGE_KEY) || 'null');
+      if (current && typeof current === 'object') {
+        return {
+          pickup: Array.isArray(current.pickup) ? current.pickup.slice(0, 20) : fallback.pickup,
+          delivery: Array.isArray(current.delivery) ? current.delivery.slice(0, 20) : fallback.delivery,
+          repeat: Boolean(current.repeat),
+          motionDelayMs: [16, 24, 32].includes(Number(current.motionDelayMs)) ? Number(current.motionDelayMs) : fallback.motionDelayMs,
+          sensor: { ...fallback.sensor, ...(current.sensor || {}) },
+          neutral: current.neutral && ['B','A','C','G'].every(axis => Number.isFinite(Number(current.neutral[axis]))) ? current.neutral : fallback.neutral
+        };
+      }
+      let legacy = null;
+      for (const key of LEGACY_FLOW_STORAGE_KEYS) {
+        legacy = JSON.parse(localStorage.getItem(key) || 'null');
+        if (legacy && typeof legacy === 'object') break;
+      }
+      if (!legacy || typeof legacy !== 'object') return fallback;
+      // Migra preferências recentes do navegador (sensor/repetição/velocidade),
+      // mas troca os passos antigos pelos valores da calibração CSV mais nova.
+      fallback.repeat = Boolean(legacy.repeat);
+      if ([16,24,32].includes(Number(legacy.motionDelayMs))) fallback.motionDelayMs = Number(legacy.motionDelayMs);
+      fallback.sensor = { ...fallback.sensor, ...(legacy.sensor || {}) };
+      localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(fallback));
+      return fallback;
+    } catch (_) { return fallback; }
+  }
+
+  function saveSequence() {
+    workflow.repeat = document.getElementById('repeatFlow').checked;
+    localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(workflow));
+    updateFlowControls();
+    renderWorkflow();
+  }
+
+  function saveMotionSettings() {
+    const selected = parseInt(document.getElementById('motionSpeed').value, 10);
+    workflow.motionDelayMs = [16, 24, 32].includes(selected) ? selected : 24;
+    localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(workflow));
+    if (port) applyMotionSettings();
+    log(`Suavidade ajustada para ${workflow.motionDelayMs} ms por grau.`, 'rx');
+  }
+
+  function applyMotionSettings() {
+    if (port) sendCmd(`SPEED:${workflow.motionDelayMs}`);
+  }
+
+  function loadPlannedMockup() {
+    if (!confirm('Carregar os 10 passos planejados como mockup? Isso substitui as listas de pegar e entregar salvas no navegador. O braço não será movido.')) return;
+    workflow.pickup = [
+      { name:'Parte alta', B:118, A:104, C:146, G:120, pauseMs:200 },
+      { name:'Ir para trás', B:118, A:80, C:138, G:168, pauseMs:200 },
+      { name:'Pegar', B:118, A:116, C:100, G:106, pauseMs:200 }
+    ];
+    workflow.delivery = [
+      { name:'Sobe', B:112, A:126, C:142, G:94, pauseMs:300 },
+      { name:'Deixa', B:46, A:162, C:142, G:94, pauseMs:400 },
+      { name:'Deixa a garra na esteira', B:40, A:162, C:142, G:134, pauseMs:300 },
+      { name:'Sobe para sair do cubo', B:40, A:144, C:142, G:134, pauseMs:300 },
+      { name:'Vai para o lado para sair', B:50, A:152, C:152, G:134, pauseMs:300 },
+      { name:'Sai da caixa', B:58, A:144, C:142, G:134, pauseMs:300 },
+      { name:'Finaliza', B:60, A:134, C:152, G:134, pauseMs:300 }
+    ];
+    workflow.repeat = true;
+    document.getElementById('repeatFlow').checked = true;
+    workflow.sensor.enabled = false;
+    document.getElementById('sensorEnabled').checked = false;
+    saveSequence();
+    document.getElementById('flowStatus').innerText = 'Mockup carregado: 3 passos para pegar e 7 para entregar. Nada foi enviado ao Arduino.';
+    log('Mockup dos passos planejados carregado no navegador; nenhum movimento foi enviado.', 'rx');
+  }
+
+  function parseCsvRows(text) {
+    const rows = [];
+    let row = [], cell = '', quoted = false;
+    const input = String(text).replace(/^\uFEFF/, '');
+    const firstLine = input.split(/\r?\n/, 1)[0] || '';
+    let quotedHeader = false, semicolons = 0, commas = 0;
+    for (let i = 0; i < firstLine.length; i++) {
+      if (firstLine[i] === '"') {
+        if (quotedHeader && firstLine[i + 1] === '"') i++;
+        else quotedHeader = !quotedHeader;
+      } else if (!quotedHeader && firstLine[i] === ';') semicolons++;
+      else if (!quotedHeader && firstLine[i] === ',') commas++;
+    }
+    const delimiter = semicolons >= commas ? ';' : ',';
+    for (let i = 0; i < input.length; i++) {
+      const char = input[i];
+      if (char === '"') {
+        if (quoted && input[i + 1] === '"') { cell += '"'; i++; }
+        else quoted = !quoted;
+      } else if (char === delimiter && !quoted) {
+        row.push(cell); cell = '';
+      } else if ((char === '\n' || char === '\r') && !quoted) {
+        if (char === '\r' && input[i + 1] === '\n') i++;
+        row.push(cell); cell = '';
+        if (row.some(value => value.trim() !== '')) rows.push(row);
+        row = [];
+      } else cell += char;
+    }
+    if (cell.length || row.length) { row.push(cell); if (row.some(value => value.trim() !== '')) rows.push(row); }
+    return rows;
+  }
+
+  async function importWorkflowCsv(file) {
+    const picker = document.getElementById('workflowCsvFile');
+    if (!file) return;
+    if (flowRunning) {
+      log('Pare o fluxo antes de importar outra sequência.', 'warn');
+      if (picker) picker.value = '';
+      return;
+    }
+    try {
+      const rows = parseCsvRows(await file.text());
+      if (rows.length < 2) throw new Error('O arquivo não contém linhas de calibração.');
+      const normalize = value => String(value || '').trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const headers = rows[0].map(normalize);
+      const required = ['categoria','etapa','ordem','nome','base_graus','ombro_graus','cotovelo_graus','garra_graus','pausa_ms','parametro','valor'];
+      if (!required.every(header => headers.includes(header))) throw new Error('O cabeçalho não corresponde ao CSV de calibração MeArm.');
+      const records = rows.slice(1).map(values => Object.fromEntries(headers.map((header, index) => [header, (values[index] || '').trim()])));
+      // CSV import is a replacement, not a merge with stale browser settings.
+      const defaults = JSON.parse(JSON.stringify(OFFICIAL_FLOW));
+      const next = { pickup:[], delivery:[], neutral:null, repeat:defaults.repeat, motionDelayMs:defaults.motionDelayMs, sensor:{ ...defaults.sensor } };
+      const validAngle = value => value !== '' && Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 180;
+      for (const record of records) {
+        const category = normalize(record.categoria);
+        const phase = normalize(record.etapa);
+        if (category === 'passo') {
+          if (phase !== 'pegar' && phase !== 'entregar') throw new Error(`Etapa desconhecida no CSV: “${record.etapa}”.`);
+          if (!['base_graus','ombro_graus','cotovelo_graus','garra_graus'].every(key => validAngle(record[key]))) throw new Error(`Ângulos inválidos no passo “${record.nome || record.ordem}”.`);
+          const order = Number.parseInt(record.ordem, 10);
+          const pause = Number.parseInt(record.pausa_ms || '0', 10);
+          if (!Number.isInteger(order) || order < 1 || !Number.isInteger(pause) || pause < 0) throw new Error(`Ordem ou pausa inválida no passo “${record.nome || record.ordem}”.`);
+          const step = {
+            name: record.nome || `${phase} ${order}`,
+            B:Number(record.base_graus), A:Number(record.ombro_graus), C:Number(record.cotovelo_graus), G:Number(record.garra_graus),
+            pauseMs:Number.isFinite(pause) ? Math.max(0, Math.min(10000, pause)) : 0,
+            order:Number.isFinite(order) ? order : 999
+          };
+          next[phase === 'pegar' ? 'pickup' : 'delivery'].push(step);
+        } else if (category === 'ponto' && /neutro/i.test(`${record.etapa} ${record.nome}`) && ['base_graus','ombro_graus','cotovelo_graus','garra_graus'].every(key => validAngle(record[key]))) {
+          next.neutral = { B:Number(record.base_graus), A:Number(record.ombro_graus), C:Number(record.cotovelo_graus), G:Number(record.garra_graus) };
+        } else if (category === 'fluxo') {
+          const parameter = normalize(record.parametro);
+          if (parameter === 'repetir') next.repeat = ['sim','true','1','yes'].includes(normalize(record.valor));
+          if (parameter === 'intervalo_movimento_ms_por_grau') {
+            const speed = Number(record.valor);
+            if ([16,24,32].includes(speed)) next.motionDelayMs = speed;
+          }
+        } else if (category === 'sensor') {
+          const parameter = normalize(record.parametro);
+          if (parameter === 'habilitado') next.sensor.enabled = ['sim','true','1','yes'].includes(normalize(record.valor));
+          if (parameter === 'distancia_cm') next.sensor.distanceCm = Math.max(2, Math.min(100, Number.parseInt(record.valor, 10) || 10));
+          if (parameter === 'presenca_estavel_ms' && [3000,4000,5000].includes(Number(record.valor))) next.sensor.stableMs = Number(record.valor);
+        } else if (category === 'garra') {
+          const parameter = normalize(record.parametro);
+          const angle = Number(record.valor);
+          if (Number.isInteger(angle) && angle >= 0 && angle <= 180) {
+            if (parameter === 'aberta_graus') gripCal.open = angle;
+            if (parameter === 'fechada_graus') gripCal.closed = angle;
+          }
+        }
+      }
+      next.pickup.sort((a,b) => a.order - b.order);
+      next.delivery.sort((a,b) => a.order - b.order);
+      next.pickup = next.pickup.slice(0,20).map(({order,...step}) => step);
+      next.delivery = next.delivery.slice(0,20).map(({order,...step}) => step);
+      if (!next.pickup.length || !next.delivery.length) throw new Error('O CSV precisa ter pelo menos um passo válido para pegar e um para entregar.');
+      if (next.neutral) next.neutral = { ...next.neutral };
+      workflow = next;
+      localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(workflow));
+      renderWorkflow();
+      document.getElementById('flowStatus').innerText = `Importado de “${file.name}”: ${workflow.pickup.length} passos para pegar e ${workflow.delivery.length} para entregar${workflow.neutral ? ` · neutro B${workflow.neutral.B} A${workflow.neutral.A} C${workflow.neutral.C} G${workflow.neutral.G}` : ''} · repetição ${workflow.repeat ? 'ativa' : 'desativada'} · suavidade ${workflow.motionDelayMs} ms/grau. Nenhum movimento foi enviado ao Arduino.`;
+      log(`Fluxo importado de ${file.name}: ${workflow.pickup.length} passos para pegar e ${workflow.delivery.length} para entregar.`, 'rx');
+    } catch (error) {
+      document.getElementById('flowStatus').innerText = `Falha na importação: ${error.message}`;
+      log(`Falha ao importar CSV: ${error.message}`, 'err');
+    } finally {
+      if (picker) picker.value = '';
+    }
+  }
+
+  function saveSensorSettings() {
+    const distance = Math.max(2, Math.min(100, parseInt(document.getElementById('sensorDistance').value || '10', 10)));
+    const stableMs = parseInt(document.getElementById('sensorStable').value || '3000', 10);
+    workflow.sensor = { enabled: document.getElementById('sensorEnabled').checked, distanceCm: distance, stableMs: [3000, 4000, 5000].includes(stableMs) ? stableMs : 3000 };
+    document.getElementById('sensorDistance').value = distance;
+    localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(workflow));
+    updateSensorStatus();
+    updateFlowControls();
+    if (port) applySensorSettings();
+  }
+
+  function applySensorSettings() {
+    if (!port) return;
+    if (workflow.sensor.enabled) sendCmd(`SENSOR:ON:${workflow.sensor.distanceCm}:${workflow.sensor.stableMs}`);
+    else sendCmd('SENSOR:OFF');
+  }
+
+  function updateSensorStatus(message) {
+    const el = document.getElementById('sensorStatus');
+    if (!el) return;
+    if (message) el.innerText = message;
+    else if (!workflow.sensor.enabled) el.innerText = 'Desativado · modo manual';
+    else el.innerText = `Ativo · ${workflow.sensor.distanceCm} cm · ${workflow.sensor.stableMs / 1000}s`;
+  }
+
+  function poseFromAngles() {
+    return { B: ang.B, A: ang.A, C: ang.C, G: ang.G };
+  }
+
+  function recordStep(phase) {
+    if (!port) return log('Conecte o Arduino antes de gravar os ângulos atuais.', 'warn');
+    const list = phase === 'pickup' ? workflow.pickup : workflow.delivery;
+    const nameInput = document.getElementById(phase === 'pickup' ? 'pickupName' : 'deliveryName');
+    const pauseInput = document.getElementById(phase === 'pickup' ? 'pickupPause' : 'deliveryPause');
+    const name = nameInput.value.trim() || `${phase === 'pickup' ? 'Pegar' : 'Entregar'} ${list.length + 1}`;
+    if (list.length >= 20) return log('Cada etapa aceita até 20 passos.', 'warn');
+    list.push({ name, ...poseFromAngles(), pauseMs: Math.max(0, Math.min(10000, parseInt(pauseInput.value || '0', 10))) });
+    nameInput.value = '';
+    saveSequence();
+    log(`Passo gravado: ${name} · B${ang.B} A${ang.A} C${ang.C} G${ang.G}`, 'rx');
+  }
+
+  function renderStepList(phase, elementId, countId) {
+    const list = workflow[phase];
+    const root = document.getElementById(elementId);
+    root.innerHTML = '';
+    list.forEach((step, index) => {
+      const li = document.createElement('li');
+      const number = document.createElement('span');
+      number.className = 'sequence-index';
+      number.innerText = String(index + 1);
+      const text = document.createElement('span');
+      text.innerHTML = `${escapeHtml(step.name)}<span class="sequence-angles">B${step.B} · A${step.A} · C${step.C} · G${step.G} · pausa ${step.pauseMs}ms</span>`;
+      const actions = document.createElement('span');
+      actions.className = 'sequence-actions';
+      const testButton = document.createElement('button');
+      testButton.type = 'button';
+      testButton.className = 'sequence-test';
+      testButton.innerHTML = '<i class="bi bi-play-fill" aria-hidden="true"></i><span>Testar</span>';
+      testButton.title = 'Executar somente este passo';
+      testButton.setAttribute('aria-label', `Testar passo ${index + 1}: ${step.name}`);
+      testButton.disabled = !port || flowRunning;
+      testButton.onclick = () => testWorkflowStep(phase, index);
+      actions.appendChild(testButton);
+      [
+        ['<i class="bi bi-arrow-up" aria-hidden="true"></i>', 'Mover para cima', -1],
+        ['<i class="bi bi-arrow-down" aria-hidden="true"></i>', 'Mover para baixo', 1],
+        ['<i class="bi bi-trash3" aria-hidden="true"></i>', 'Remover passo', 0]
+      ].forEach(([icon, title, delta]) => {
+        const button = document.createElement('button');
+        button.type = 'button'; button.innerHTML = icon;
+        button.title = title; button.setAttribute('aria-label', title);
+        button.disabled = flowRunning || (delta < 0 ? index === 0 : delta > 0 ? index === list.length - 1 : false);
+        button.onclick = () => {
+          if (delta === 0) list.splice(index, 1);
+          else [list[index], list[index + delta]] = [list[index + delta], list[index]];
+          saveSequence();
+        };
+        actions.appendChild(button);
+      });
+      li.append(number, text, actions); root.appendChild(li);
+    });
+    document.getElementById(countId).innerText = `${list.length} passo${list.length === 1 ? '' : 's'}`;
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  }
+
+  function renderWorkflow() {
+    if (!document.getElementById('pickupSteps')) return;
+    renderStepList('pickup', 'pickupSteps', 'pickupCount');
+    renderStepList('delivery', 'deliverySteps', 'deliveryCount');
+    document.getElementById('repeatFlow').checked = workflow.repeat;
+    document.getElementById('sensorEnabled').checked = workflow.sensor.enabled;
+    document.getElementById('sensorDistance').value = workflow.sensor.distanceCm;
+    document.getElementById('sensorStable').value = String(workflow.sensor.stableMs);
+    document.getElementById('motionSpeed').value = String(workflow.motionDelayMs);
+    updateSensorStatus();
+    updateFlowControls();
+  }
+
+  function updateFlowControls() {
+    const valid = workflow && workflow.pickup.length > 0 && workflow.delivery.length > 0 && getNeutralPose();
+    const run = document.getElementById('btnRunFlow');
+    const stop = document.getElementById('btnStopFlow');
+    if (run) run.disabled = !port || !serialReady || !poseReferenced || !valid || flowRunning;
+    if (stop) stop.disabled = !port || !serialReady || !flowRunning;
+    document.querySelectorAll('.sequence-test').forEach(button => { button.disabled = !port || !serialReady || !poseReferenced || flowRunning; });
+    const csv = document.getElementById('btnExportCsv');
+    if (csv) csv.disabled = false;
+    const status = document.getElementById('flowStatus');
+    const poseNotice = document.getElementById('flowPoseNotice');
+    const poseMessage = document.getElementById('flowPoseMessage');
+    const poseButton = document.getElementById('btnSyncPoseFlow');
+    if (poseNotice) poseNotice.hidden = !serialReady || poseReferenced;
+    if (poseMessage && serialReady && !poseReferenced) poseMessage.innerText = poseSyncSupported
+      ? 'Os botões Testar ficam bloqueados até sincronizar. Coloque o braço fisicamente no neutro configurado; a confirmação não move os servos.'
+      : 'O Arduino respondeu sem o protocolo de sincronização segura. Carregue a versão atual do firmware (.ino) para habilitar os testes.';
+    if (poseButton) poseButton.disabled = !serialReady || poseReferenced;
+    if (status) {
+      if (flowRunning && sensorWaitPhase === 'clear') status.innerText = sensorPresent
+        ? 'Ciclo concluído. Retire a caixa do alcance do sensor; o próximo ciclo começa depois que ele indicar área livre.'
+        : 'Sensor liberado. Aguardando uma nova caixa para iniciar o próximo ciclo…';
+      else if (flowRunning && sensorWaitPhase === 'next') status.innerText = 'Área livre confirmada. Coloque a próxima caixa a até ' + workflow.sensor.distanceCm + ' cm; ela precisa permanecer por ' + (workflow.sensor.stableMs / 1000) + ' s.';
+      else if (flowRunning && sensorPending) status.innerText = 'Nova caixa detectada durante o movimento; ela ficou na fila para o próximo ciclo.';
+      else if (flowRunning) status.innerText = 'Fluxo em execução…';
+      else if (serialReady && !poseReferenced) status.innerText = 'Movimentos bloqueados até confirmar que o braço está fisicamente no ponto neutro.';
+      else if (!getNeutralPose()) status.innerText = 'Sincronize o Arduino ou importe/grave o ponto neutro.';
+      else if (!workflow.pickup.length || !workflow.delivery.length) status.innerText = 'Grave pelo menos um passo para pegar e um para entregar.';
+      else status.innerText = `${workflow.pickup.length} passo(s) para pegar · ${workflow.delivery.length} para entregar${workflow.repeat ? ' · repetição ativada' : ''}.`;
+    }
+  }
+
+  function resolveSensorWaiters() {
+    for (let i = sensorWaiters.length - 1; i >= 0; i--) {
+      const waiter = sensorWaiters[i];
+      if (waiter.expected === sensorPresent) {
+        sensorWaiters.splice(i, 1);
+        waiter.resolve();
+      }
+    }
+    updateFlowControls();
+  }
+
+  function waitForSensorState(expected) {
+    if (stopRequested) return Promise.resolve();
+    if (sensorPresent === expected) return Promise.resolve();
+    return new Promise(resolve => sensorWaiters.push({ expected, resolve }));
+  }
+
+  function handleSensorEvent(present, detail) {
+    sensorPresent = present;
+    updateSensorStatus(detail || (present ? 'Caixa confirmada' : 'Área livre'));
+    if (present && flowRunning && !sensorWaitPhase) {
+      sensorPending = true;
+      log('Caixa detectada enquanto a garra se movimenta; execução enfileirada para o próximo ciclo.', 'rx');
+    }
+    resolveSensorWaiters();
+    if (present && workflow.sensor.enabled && serialReady && poseReferenced && !flowRunning && workflow.pickup.length && workflow.delivery.length && getNeutralPose()) {
+      startWorkflow('sensor');
+    }
+  }
+
+  function waitForPoseAck(timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (poseAckResolver) poseAckResolver = null;
+        reject(new Error('O Arduino não confirmou o movimento do passo.'));
+      }, timeoutMs);
+      poseAckResolver = (ok, message) => {
+        clearTimeout(timer);
+        poseAckResolver = null;
+        if (ok) resolve(); else reject(new Error(message || 'Movimento interrompido.'));
+      };
+    });
+  }
+
+  async function moveToPose(pose) {
+    const ack = waitForPoseAck();
+    const sent = await sendCmd(`POSE:${pose.B}:${pose.A}:${pose.C}:${pose.G}`);
+    if (!sent) throw new Error('Falha ao enviar a posição ao Arduino.');
+    await ack;
+    syncPoseControls(pose);
+  }
+
+  async function testWorkflowStep(phase, index) {
+    if (!port || !serialReady || !poseReferenced) return log('Conecte e confirme a pose física inicial antes de testar um passo.', 'warn');
+    if (flowRunning) return;
+    const step = workflow[phase]?.[index];
+    if (!step) return log('Esse passo não está mais na lista.', 'warn');
+
+    const phaseName = phase === 'pickup' ? 'pegar' : 'entregar';
+    flowRunning = true;
+    stopRequested = false;
+    updateFlowControls();
+    document.getElementById('flowStatus').innerText = `Testando somente o passo ${index + 1} · ${step.name}…`;
+    try {
+      const ready = await sendCmd('SEQSTART');
+      if (!ready) throw new Error('Falha ao preparar o Arduino para o teste.');
+      await moveToPose(step);
+      if (!stopRequested) await delay(step.pauseMs);
+      if (!stopRequested) log(`Passo ${index + 1} de ${phaseName} testado: ${step.name}`, 'rx');
+    } catch (error) {
+      if (!stopRequested) log(error.message, 'err');
+    } finally {
+      flowRunning = false;
+      updateFlowControls();
+    }
+  }
+
+  async function playOneCycle() {
+    const neutral = getNeutralPose();
+    if (!neutral) throw new Error('Importe o ponto neutro do CSV ou sincronize o Arduino.');
+    await moveToPose(neutral);
+    for (const step of workflow.pickup) {
+      if (stopRequested) return;
+      await moveToPose(step);
+      await delay(step.pauseMs);
+    }
+    for (const step of workflow.delivery) {
+      if (stopRequested) return;
+      await moveToPose(step);
+      await delay(step.pauseMs);
+    }
+    if (!stopRequested) await moveToPose(neutral);
+  }
+
+  function delay(ms) { return new Promise(resolve => setTimeout(resolve, Math.max(0, ms))); }
+
+  async function startWorkflow(source = 'manual') {
+    if (flowRunning) return;
+    if (!port) return log('Conecte o Arduino antes de iniciar o fluxo.', 'warn');
+    if (!serialReady || !poseReferenced) return log('Confirme primeiro a pose física inicial do braço.', 'warn');
+    if (!getNeutralPose()) return log('Importe o ponto neutro do CSV ou sincronize/grave o neutro no Arduino.', 'warn');
+    if (!workflow.pickup.length || !workflow.delivery.length) return log('Grave pelo menos um passo em cada etapa.', 'warn');
+    flowRunning = true; stopRequested = false; sensorPending = false; sensorWaitPhase = null; updateFlowControls();
+    document.getElementById('flowStatus').innerText = source === 'sensor' ? 'Caixa confirmada; iniciando fluxo…' : 'Executando um ciclo…';
+    try {
+      const ready = await sendCmd('SEQSTART');
+      if (!ready) throw new Error('Falha ao preparar o Arduino para o fluxo.');
+      do {
+        await playOneCycle();
+        if (stopRequested || !workflow.repeat) break;
+        if (workflow.sensor.enabled) {
+          if (sensorPending && sensorPresent) {
+            sensorPending = false;
+            updateFlowControls();
+            continue;
+          }
+          sensorPending = false;
+          sensorWaitPhase = 'clear';
+          updateFlowControls();
+          await waitForSensorState(false);
+          if (stopRequested) break;
+          sensorWaitPhase = 'next';
+          updateFlowControls();
+          await waitForSensorState(true);
+          sensorWaitPhase = null;
+          updateFlowControls();
+        }
+      } while (!stopRequested && workflow.repeat);
+      if (!stopRequested) log('Fluxo concluído no ponto neutro.', 'rx');
+    } catch (error) { log(error.message, 'err'); }
+    finally {
+      sensorWaitPhase = null;
+      sensorPending = false;
+      flowRunning = false; updateFlowControls();
+    }
+  }
+
+  function stopWorkflow() {
+    if (!flowRunning) return;
+    stopRequested = true;
+    sensorWaitPhase = null;
+    sensorPending = false;
+    while (sensorWaiters.length) sensorWaiters.pop().resolve();
+    if (poseAckResolver) poseAckResolver(false, 'Fluxo parado pelo operador.');
+    sendCmd('STOP');
+    document.getElementById('flowStatus').innerText = 'Parando o movimento atual…';
+    updateFlowControls();
+  }
+
+  function exportCalibrationCsv() {
+    const columns = ['categoria','etapa','ordem','nome','base_graus','ombro_graus','cotovelo_graus','garra_graus','pausa_ms','parametro','valor'];
+    const rows = [columns];
+    const add = row => rows.push(columns.map(key => row[key] ?? ''));
+    for (const [key, label] of [['Y','Pegar legado'], ['X','Entrega legado'], ['N','Neutro']]) {
+      const point = key === 'N' ? getNeutralPose() : savedPoints[key];
+      if (point) add({ categoria:'ponto', etapa:label, ordem:1, nome:label, base_graus:point.B, ombro_graus:point.A, cotovelo_graus:point.C, garra_graus:point.G });
+    }
+    workflow.pickup.forEach((step, index) => add({ categoria:'passo', etapa:'pegar', ordem:index+1, nome:step.name, base_graus:step.B, ombro_graus:step.A, cotovelo_graus:step.C, garra_graus:step.G, pausa_ms:step.pauseMs }));
+    workflow.delivery.forEach((step, index) => add({ categoria:'passo', etapa:'entregar', ordem:index+1, nome:step.name, base_graus:step.B, ombro_graus:step.A, cotovelo_graus:step.C, garra_graus:step.G, pausa_ms:step.pauseMs }));
+    for (const axis of ['B','A','C','G']) {
+      add({ categoria:'limite', etapa:axis, parametro:'mínimo', valor:lim[axis][0] });
+      add({ categoria:'limite', etapa:axis, parametro:'máximo', valor:lim[axis][1] });
+    }
+    add({ categoria:'garra', parametro:'aberta_graus', valor:gripCal.open });
+    add({ categoria:'garra', parametro:'fechada_graus', valor:gripCal.closed });
+    add({ categoria:'fluxo', parametro:'repetir', valor:workflow.repeat ? 'sim' : 'não' });
+    add({ categoria:'fluxo', parametro:'intervalo_movimento_ms_por_grau', valor:workflow.motionDelayMs });
+    add({ categoria:'sensor', parametro:'habilitado', valor:workflow.sensor.enabled ? 'sim' : 'não' });
+    add({ categoria:'sensor', parametro:'distância_cm', valor:workflow.sensor.distanceCm });
+    add({ categoria:'sensor', parametro:'presença_estável_ms', valor:workflow.sensor.stableMs });
+    add({ categoria:'sensor', parametro:'pinos', valor:'HC-SR04; TRIG=D8; ECHO=D9' });
+    const csv = '\uFEFF' + rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = `mearm-calibracao-${new Date().toISOString().slice(0,10)}.csv`;
+    link.click(); URL.revokeObjectURL(url);
+    log('CSV da calibração exportado.', 'rx');
+  }
+
+  renderWorkflow();
+  updatePoseSummary();
+  showAppView('calibration');
+
+  function saveGripEndpoint(which) {
+    gripCal[which] = ang.G;
+    sendCmd(`GCALIB:${gripCal.open}:${gripCal.closed}`);
+    log(`Garra gravada: aberta=${gripCal.open}°, fechada=${gripCal.closed}°`, "warn");
+  }
+
+  function resetAxisLimits() {
+    lim.B = [0, 180]; lim.A = [55, 180]; lim.C = [55, 180]; lim.G = [85, 180];
+    for (const axis of ['B', 'A', 'C', 'G']) {
+      const slider = document.getElementById('sl' + axis);
+      slider.min = lim[axis][0]; slider.max = lim[axis][1];
+      slider.value = ang[axis];
+    }
+    sendCmd('LIMRESET');
+    log('Faixas amplas restauradas e gravadas na EEPROM.', 'warn');
+  }
+
+  function setAxisLimit(axis, side) {
+    const next = [...lim[axis]];
+    next[side === 'min' ? 0 : 1] = ang[axis];
+    if (next[0] > next[1]) {
+      log('Limite não gravado: MIN não pode superar MAX.', 'warn');
+      return;
+    }
+    lim[axis] = next;
+    const slider = document.getElementById('sl' + axis);
+    slider.min = next[0];
+    slider.max = next[1];
+    sendCmd(`LIM:${axis}:${next[0]}:${next[1]}`);
+    log(`${axis}: faixa salva de ${next[0]}° a ${next[1]}°`, 'warn');
+  }
+
+  const sendQueue = [];
+  let isSending = false;
+  let pendingAngle = {};
+  let sendTimer = null;
+
+  // ─── CONEXÃO USB SERIAL ───
+  async function toggleConnect() {
+    if (port) {
+      try { await disconnect(); } catch (error) { log(error.message, 'err'); }
+    } else {
+      connect();
+    }
+  }
+
+  async function connect() {
+    try {
+      port = await navigator.serial.requestPort();
+      const configuredBaud = Number(new URLSearchParams(window.location.search).get('baud') || 9600);
+      await port.open({ baudRate: configuredBaud });
+      writer = port.writable.getWriter();
+      keepReading = true;
+      serialReady = false;
+      setUI(true);
+      log("Conectado. Movimentos bloqueados até receber a posição inicial do Arduino.", "warn");
+      readLoop();
+      statusPollAttempts = 0;
+      clearTimeout(statusPollTimer);
+      statusPollTimer = setTimeout(requestInitialStatus, 1400);
+    } catch (err) {
+      log("Erro ao conectar: " + err.message, "err");
+    }
+  }
+
+  async function requestInitialStatus() {
+    if (!port || serialReady) return;
+    if (statusPollAttempts >= 8) {
+      statusPollTimer = null;
+      log('Ainda não recebi [STATUS]. Verifique se o firmware está carregado; mantenho os motores bloqueados por segurança.', 'err');
+      return;
+    }
+    statusPollAttempts++;
+    log(`Consultando posição inicial do Arduino (${statusPollAttempts}/8)…`, 'tx');
+    await sendCmd('?');
+    if (port && !serialReady) statusPollTimer = setTimeout(requestInitialStatus, 900);
+  }
+
+  async function disconnect() {
+    if (flowRunning) {
+      stopRequested = true;
+      while (sensorWaiters.length) sensorWaiters.pop().resolve();
+      if (poseAckResolver) poseAckResolver(false, 'Conexão encerrada.');
+      await sendCmd('STOP');
+      flowRunning = false;
+    }
+    keepReading = false;
+    serialReady = false;
+    poseReferenced = false;
+    poseSyncSupported = false;
+    clearTimeout(statusPollTimer);
+    statusPollTimer = null;
+    if (reader) {
+      try { await reader.cancel(); reader.releaseLock(); } catch (e) {}
+      reader = null;
+    }
+    if (writer) {
+      try { writer.releaseLock(); } catch (e) {}
+      writer = null;
+    }
+    if (port) {
+      try { await port.close(); }
+      catch (error) { throw new Error(`Não foi possível liberar a porta USB: ${error.message}`); }
+      port = null;
+    }
+    setUI(false);
+    log("Desconectado.", "warn");
+    const response = await fetch('/api/calibration/session/release', { method: 'POST', keepalive: true });
+    if (!response.ok) throw new Error('A porta USB foi fechada, mas a aplicação não confirmou o fim da sessão. Tente encerrar novamente.');
+  }
+
+  window.addEventListener('message', async (event) => {
+    if (event.origin !== window.location.origin || event.source !== window.parent) return;
+    if (event.data?.type === 'export-calibration-profile') {
+      event.source.postMessage({
+        type: 'calibration-profile-exported', requestId: event.data.requestId,
+        profile: {
+          ...workflow,
+          neutral: getNeutralPose(),
+          motion_delay_ms: workflow.motionDelayMs,
+          gripper: { open: gripCal.open, closed: gripCal.closed },
+          source: 'calibrador-web'
+        }
+      }, event.origin);
+      return;
+    }
+    if (event.data?.type !== 'release-calibration-session') return;
+    try {
+      await disconnect();
+      event.source.postMessage({ type: 'calibration-session-released' }, event.origin);
+    } catch (error) {
+      event.source.postMessage({ type: 'calibration-session-release-failed', message: error.message }, event.origin);
+    }
+  });
+
+  function setUI(on) {
+    document.getElementById('btnConn').innerText = on ? 'Desconectar' : 'Conectar USB';
+    document.getElementById('chipText').innerText = on ? 'Conectado' : 'Desconectado';
+    document.getElementById('serialStatus').innerText = !on ? 'Aguardando conexão' : !serialReady ? 'Conectado · aguardando posição' : poseReferenced ? 'Conectado · referência carregada' : 'Conectado · confirme a pose inicial';
+    document.getElementById('dot').className = 'status-dot' + (on ? ' online' : '');
+    const movementEnabled = on && serialReady && poseReferenced;
+    document.getElementById('keyboardHint').hidden = !movementEnabled;
+    document.querySelectorAll('input[type=range], #jointPair, .btn:not(#btnConn):not(#btnSyncPose):not(#btnFreeAll), .btn-step, .claw-big-btn, .btn-run-big').forEach(el => el.disabled = !movementEnabled);
+    const freeButton = document.getElementById('btnFreeAll');
+    if (freeButton) freeButton.disabled = !on || !serialReady;
+    const syncButton = document.getElementById('btnSyncPose');
+    if (syncButton) syncButton.disabled = !on || !serialReady;
+    const validationButton = document.getElementById('btnValidateAuto');
+    if (validationButton) validationButton.disabled = !on || !serialReady || flowRunning;
+    updateFlowControls();
+  }
+
+  async function readLoop() {
+    while (port && port.readable && keepReading) {
+      reader = port.readable.getReader();
+      try {
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += new TextDecoder().decode(value);
+          let lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            const s = line.trim();
+            if (s) {
+              log("← " + s, "rx");
+              if (s.includes("Ponto Y")) { document.getElementById('coordsY').innerText = s.split(": ")[1] || s; savedPoints.Y = parseSavedPose(s); }
+              if (s.includes("Ponto X")) { document.getElementById('coordsX').innerText = s.split(": ")[1] || s; savedPoints.X = parseSavedPose(s); }
+              if (s.includes("Ponto Neutro")) { document.getElementById('coordsN').innerText = s.split(": ")[1] || s; savedPoints.N = parseSavedPose(s); updateFlowControls(); }
+              if (s.includes('[POSE_DONE]') && poseAckResolver) poseAckResolver(true);
+              if (s.includes('[POSE_ABORTED]') && poseAckResolver) poseAckResolver(false, 'O Arduino interrompeu o movimento.');
+              const currentPose = s.match(/\[STATUS\]\s*B:(\d+)\s+Braco\(11\):(\d+)\s+Cotovelo\(6\):(\d+)\s+Garra\(3\):(\d+)/i);
+              if (currentPose) {
+                syncPoseControls({ B:currentPose[1], A:currentPose[2], C:currentPose[3], G:currentPose[4] });
+                const poseRef = s.match(/PoseRef:(SIM|NAO)/i);
+                poseSyncSupported = !!poseRef;
+                poseReferenced = !!poseRef && poseRef[1].toUpperCase() === 'SIM';
+                if (!serialReady) {
+                  serialReady = true;
+                  clearTimeout(statusPollTimer);
+                  statusPollTimer = null;
+                  log(!poseSyncSupported
+                    ? 'O Arduino está com firmware antigo, sem o protocolo de referência segura. Atualize o .ino para liberar os testes.'
+                    : poseReferenced
+                    ? 'Última referência de ângulos carregada. Os servos não informam posição física; se o braço foi movido à mão com eles soltos, confirme a pose inicial antes de continuar.'
+                    : 'Sem referência salva. Movimentos bloqueados: coloque o braço no ponto neutro e confirme a pose inicial.', 'warn');
+                  setUI(true);
+                  applySensorSettings();
+                  applyMotionSettings();
+                } else setUI(true);
+              }
+              if (s.includes('[POSE_SYNCED]')) {
+                poseReferenced = true;
+                const synced = s.match(/\[POSE_SYNCED\]\s*B:(\d+)\s+A:(\d+)\s+C:(\d+)\s+G:(\d+)/i);
+                if (synced) syncPoseControls({ B:synced[1], A:synced[2], C:synced[3], G:synced[4] });
+                setUI(true);
+                log('Referência inicial confirmada sem enviar movimento aos servos.', 'rx');
+              }
+              const autoValidation = s.match(/\[AUTO_STATUS\]\s*EEPROM=(VALIDA|INVALIDA)/i);
+              if (autoValidation && autoValidationResolver) autoValidationResolver(autoValidation[1].toUpperCase() === 'VALIDA');
+              const gripDone = s.match(/\[GARRA_DONE\]:(\d+)/i);
+              if (gripDone) syncGripControl(gripDone[1]);
+              const sensorEvent = s.match(/SENSOR:(PRESENTE|AUSENTE)(?::(\d+))?/i);
+              if (sensorEvent) handleSensorEvent(sensorEvent[1].toUpperCase() === 'PRESENTE', sensorEvent[1].toUpperCase() === 'PRESENTE' ? `Caixa confirmada · ${sensorEvent[2] || '?'} cm` : 'Área livre');
+              const gcal = s.match(/Garra:\s*Aberta=(\d+).*Fechada=(\d+)/i);
+              if (gcal) { gripCal.open = parseInt(gcal[1]); gripCal.closed = parseInt(gcal[2]); }
+              const lcal = s.match(/\[LIMITES\]\s+B=(\d+):(\d+)\s+A=(\d+):(\d+)\s+C=(\d+):(\d+)\s+G=(\d+):(\d+)/i);
+              if (lcal) {
+                for (const [axis, index] of [['B',1], ['A',3], ['C',5], ['G',7]]) {
+                  lim[axis] = [parseInt(lcal[index]), parseInt(lcal[index + 1])];
+                  const slider = document.getElementById('sl' + axis);
+                  slider.min = lim[axis][0]; slider.max = lim[axis][1];
+                  if (ang[axis] < lim[axis][0] || ang[axis] > lim[axis][1]) { ang[axis] = Math.max(lim[axis][0], Math.min(lim[axis][1], ang[axis])); slider.value = ang[axis]; document.getElementById('val' + axis).innerText = ang[axis] + '°'; }
+                }
+                updateFlowControls();
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (keepReading) log("Erro de leitura: " + err.message, "err");
+      } finally {
+        if (reader) reader.releaseLock();
+      }
+    }
+  }
+
+  function parseSavedPose(line) {
+    const match = line.match(/B:(\d+)\s+Braco:(\d+)\s+Cotovelo:(\d+)\s+G:(\d+)/i);
+    return match ? { B:parseInt(match[1],10), A:parseInt(match[2],10), C:parseInt(match[3],10), G:parseInt(match[4],10) } : null;
+  }
+
+  // ─── ENVIO SERIAL ROBUSTO COM TIMEOUT ───
+  async function sendCmd(cmd) {
+    if (!port || !writer) return false;
+    return new Promise(resolve => {
+      sendQueue.push({ cmd, resolve });
+      flushSendQueue();
+    });
+  }
+
+  async function flushSendQueue() {
+    if (isSending) return;
+    isSending = true;
+    while (sendQueue.length > 0) {
+      const item = sendQueue.shift();
+      try {
+        log("→ " + item.cmd, "tx");
+        await Promise.race([
+          writer.write(new TextEncoder().encode(item.cmd + '\n')),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout serial")), 500))
+        ]);
+        item.resolve(true);
+      } catch (err) {
+        console.error("Erro envio:", err);
+        log("⚠️ Falha serial: " + err.message, "warn");
+        item.resolve(false);
+        sendQueue.splice(0).forEach(pending => pending.resolve(false));
+      }
+    }
+    isSending = false;
+  }
+
+  // ─── CONTROLE DIRETO DOS EIXOS ───
+  function setAngle(axis, val) {
+    if (!port || !serialReady || !poseReferenced) return;
+    val = Math.max(lim[axis][0], Math.min(lim[axis][1], parseInt(val)));
+    ang[axis] = val;
+    updatePoseSummary();
+
+    const el = document.getElementById('sl' + axis);
+    if (el) el.value = val;
+    const vEl = document.getElementById('val' + axis);
+    if (vEl) vEl.innerText = val + '°';
+
+    if ((axis === 'A' || axis === 'C') && document.getElementById('jointPair').checked) {
+      return; // Em modo conjunto, os alvos só se movem ao clicar no botão pareado.
+    }
+    pendingAngle[axis] = val;
+    if (!sendTimer) {
+      sendTimer = setTimeout(() => {
+        const jointPair = document.getElementById('jointPair').checked;
+        if (jointPair && (Object.prototype.hasOwnProperty.call(pendingAngle, 'A') || Object.prototype.hasOwnProperty.call(pendingAngle, 'C'))) {
+          sendCmd(`ARM:${ang.A}:${ang.C}`);
+          delete pendingAngle.A;
+          delete pendingAngle.C;
+        }
+        for (const ax in pendingAngle) {
+          sendCmd(ax + pendingAngle[ax]);
+          delete pendingAngle[ax];
+        }
+        sendTimer = null;
+      }, 30);
+    }
+  }
+
+  function moveJointPair() {
+    if (!port || !serialReady || !poseReferenced) return;
+    delete pendingAngle.A;
+    delete pendingAngle.C;
+    sendCmd(`ARM:${ang.A}:${ang.C}`);
+  }
+
+  function nudge(axis, delta) {
+    setAngle(axis, ang[axis] + delta);
+  }
+
+  // ─── MONITOR / LOG ───
+  function log(msg, type = "normal") {
+    const t = document.getElementById('term');
+    if (!t) return;
+    const line = document.createElement('div');
+    if (type === 'tx') line.className = 'msg-tx';
+    else if (type === 'rx') line.className = 'msg-rx';
+    else if (type === 'warn') line.className = 'msg-warn';
+    else if (type === 'err') line.className = 'msg-err';
+    line.innerText = msg;
+    t.appendChild(line);
+    t.scrollTop = t.scrollHeight;
+  }
+
+  function clearLog() {
+    const t = document.getElementById('term');
+    if (t) t.innerHTML = '';
+  }
+
+  // ─── ATALHOS DE TECLADO ───
+  document.addEventListener('keydown', (e) => {
+    if (!port || !serialReady || !poseReferenced) return;
+    if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const k = e.key.toLowerCase();
+    switch (k) {
+      case 'a': nudge('B', -2); break;
+      case 'd': nudge('B', 2); break;
+      case 'w': nudge('A', 2); break;
+      case 's': nudge('A', -2); break;
+      case 'q': nudge('C', 2); break;
+      case 'e': nudge('C', -2); break;
+      case 'j': nudge('G', -2); break;
+      case 'l': nudge('G', 2); break;
+      case '1': sendCmd('Y'); break;
+      case '2': sendCmd('X'); break;
+      case '3': sendCmd('N'); break;
+
+
+    }
+  });
+</script>
+
+</body>
+</html>
+

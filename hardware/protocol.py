@@ -64,6 +64,9 @@ def validate_command(command: str) -> str:
         "GARRA:POSICIONAR:E01",
         "GARRA:STOP",
         "SISTEMA:PING",
+        "SISTEMA:STATUS",
+        "SISTEMA:LIBERAR",
+        "PRESENCA:LEITURA",
         "SENSOR:DESARMAR",
         "ESTEIRA:START",
         "ESTEIRA:STOP",
@@ -72,6 +75,12 @@ def validate_command(command: str) -> str:
     if normalized in fixed_commands:
         return normalized
     if re.fullmatch(r"PRESENCA:CONFIGURAR:(?:[2-9]|[1-9][0-9]|100):[345]000", normalized):
+        return normalized
+    if re.fullmatch(r"GARRA:PERFIL:(?:[1-9]|1[0-9]|20):(?:[1-9]|1[0-9]|20):(?:16|24|32)", normalized):
+        return normalized
+    if re.fullmatch(r"GARRA:PASSO:[PE]:(?:[1-9]|1[0-9]|20):(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180):(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180):(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180):(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180):(?:[0-9]|[1-9][0-9]{0,3}|10000)", normalized):
+        return normalized
+    if re.fullmatch(r"SISTEMA:SYNC:(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180):(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180):(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180):(?:[0-9]|[1-9][0-9]|1[0-7][0-9]|180)", normalized):
         return normalized
 
     if normalized.startswith("DESTINO:"):

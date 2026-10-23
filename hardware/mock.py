@@ -46,6 +46,12 @@ class MockArduino(Arduino):
         self.pickup_zone = "P01"
         self.sensor_destination = None
         self._suppress_gripper = defaultdict(int)
+        self.profile_counts = None
+        self.profile_next = ("P", 1)
+        self.firmware_calibrated = True
+        self.pose_referenced = True
+        self.reset_required = False
+        self.presence_background_cm = -1  # sem eco: area livre
 
     def connect(self) -> None:
         with self._lock:
@@ -71,8 +77,16 @@ class MockArduino(Arduino):
     def suppress_next_arrival_event(self) -> None:
         self._suppress_arrival_events += 1
 
-    def suppress_next_gripper_event(self, command="GARRA:PEGAR"):
-        self._suppress_gripper[validate_command(command)] += 1
+    def suppress_next_gripper_event(self, command=None):
+        # Sem comando: omite a proxima conclusao da garra, seja passo do perfil ou acao antiga.
+        self._suppress_gripper[validate_command(command) if command else "*"] += 1
+
+    def _take_gripper_suppression(self, command):
+        for key in (command, "*"):
+            if self._suppress_gripper[key]:
+                self._suppress_gripper[key] -= 1
+                return True
+        return False
 
     def execute(
         self,
@@ -163,14 +177,56 @@ class MockArduino(Arduino):
             return
         if command == "SISTEMA:PING":
             return
+        if command == "SISTEMA:STATUS":
+            payload = (f"SISTEMA_STATUS:RESET_REQUIRED={int(self.reset_required)}:"
+                       f"CALIBRATED={int(self.firmware_calibrated)}:POSE_REFERENCED={int(self.pose_referenced)}")
+            self._events.put(parse_message(encode_message("EVT", cycle_id, payload)))
+            return
+        if command == "PRESENCA:LEITURA":
+            distance = self.presence_background_cm
+            payload = f"PRESENCA_LEITURA:{distance}:{distance}:{distance}:{0 if distance < 0 else 9}"
+            self._events.put(parse_message(encode_message("EVT", cycle_id, payload)))
+            return
+        if command == "SISTEMA:LIBERAR":
+            self.pose_referenced = False
+            return
+        if command.startswith("SISTEMA:SYNC:"):
+            self.pose_referenced = True
+            self._events.put(parse_message(encode_message("EVT", cycle_id, "POSE_REFERENCE_CONFIRMED")))
+            return
+        if command.startswith("GARRA:PERFIL:"):
+            _garra, _perfil, pickup_count, delivery_count, _speed = command.split(":")
+            self.profile_counts = (int(pickup_count), int(delivery_count))
+            self.profile_next = ("P", 1)
+            return
         if command == "GARRA:AREA:P01":
             self.pickup_zone = "P01"
+            return
+        if command.startswith("GARRA:PASSO:"):
+            _prefix, _label, phase, order, *_pose = command.split(":")
+            order = int(order)
+            if self.profile_counts is None or (phase, order) != self.profile_next:
+                raise ArduinoCommandError("PASSO_FORA_DE_ORDEM")
+            completion = f"GARRA_PASSO_CONCLUIDO:{phase}:{order}"
+            if self._take_gripper_suppression(command):
+                pass
+            else:
+                self._events.put(parse_message(encode_message("EVT", cycle_id, completion)))
+            pickup_count, delivery_count = self.profile_counts
+            if phase == "P" and order < pickup_count:
+                self.profile_next = ("P", order + 1)
+            elif phase == "P":
+                self.profile_next = ("E", 1)
+            elif order < delivery_count:
+                self.profile_next = ("E", order + 1)
+            else:
+                self.profile_next = ("E", delivery_count + 1)
             return
         completions = {"GARRA:PEGAR": "GARRA_COLETA_CONCLUIDA", "GARRA:SOLTAR": "GARRA_ENTREGA_CONCLUIDA",
                        "GARRA:HOME": "GARRA_HOME_CONCLUIDO", "GARRA:POSICIONAR:E01": "GARRA_POSICIONAMENTO_CONCLUIDO"}
         if command in completions:
-            if self._suppress_gripper[command]:
-                self._suppress_gripper[command] -= 1
+            if self._take_gripper_suppression(command):
+                pass
             else:
                 self._events.put(parse_message(encode_message("EVT", cycle_id, completions[command])))
         if command == "GARRA:STOP":
@@ -227,3 +283,4 @@ class MockArduino(Arduino):
             self.gripper_state = "home"
             self.conveyor_state = "parada"
             self.destination = None
+            self.reset_required = False

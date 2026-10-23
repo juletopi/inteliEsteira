@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "source": "mearm-calibracao-2026-10-16.csv",
+  "pickup": [
+    {"name": "aproxima e abre", "B": 164, "A": 80, "C": 140, "G": 180, "pause_ms": 300},
+    {"name": "colado", "B": 164, "A": 126, "C": 110, "G": 180, "pause_ms": 300},
+    {"name": "fecha", "B": 164, "A": 126, "C": 110, "G": 85, "pause_ms": 300},
+    {"name": "sobe", "B": 164, "A": 106, "C": 126, "G": 85, "pause_ms": 300}
+  ],
+  "delivery": [
+    {"name": "chega perto altura", "B": 90, "A": 114, "C": 118, "G": 101, "pause_ms": 300},
+    {"name": "Deixa", "B": 90, "A": 138, "C": 112, "G": 101, "pause_ms": 300},
+    {"name": "abre", "B": 90, "A": 138, "C": 112, "G": 141, "pause_ms": 300},
+    {"name": "foge", "B": 90, "A": 94, "C": 120, "G": 123, "pause_ms": 300}
+  ],
+  "neutral": {"B": 90, "A": 94, "C": 120, "G": 123},
+  "repeat": true,
+  "motion_delay_ms": 24,
+  "sensor": {"enabled": true, "distance_cm": 5, "stable_ms": 4000},
+  "gripper": {"open": 158, "closed": 86}
+}

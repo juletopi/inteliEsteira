@@ -28,6 +28,9 @@
 
 ---
 
+> **Bancada física (EV3 + Arduino + MeArm + HC-SR04):** para instalar, rodar no modo
+> automático e recuperar falhas, siga [docs/operacao-automatica.md](docs/operacao-automatica.md).
+
 ## Sobre o projeto
 
 Para testar a integracao pelo painel sem equipamentos e preparar a bancada
@@ -423,6 +426,18 @@ O EV3 recebe os mesmos comandos `DESTINO`, `ESTEIRA:START`, `ESTEIRA:STOP` e
 um backend por vez. O IP pode ser alcançado pela rede ou por USB configurado
 como rede no ev3dev; não basta tratar o cabo USB do EV3 como uma porta COM.
 Veja o [guia de rede do ev3dev](https://www.ev3dev.org/docs/networking/).
+
+**Bluetooth no Windows:** use Bluetooth PAN/tethering do ev3dev. Ative o
+Bluetooth e o tethering Bluetooth no bloco, pareie o EV3 com o PC e conecte o PC
+à rede pessoal (PAN) do EV3 nas configurações Bluetooth do Windows. Isso cria
+uma interface de rede; o backend continua usando TCP na porta 8765. Não escolha
+uma porta COM Bluetooth. Consulte o [tutorial de tethering Bluetooth do
+ev3dev](https://www.ev3dev.org/docs/tutorials/using-bluetooth-tethering/) e o
+[guia do Windows para conectar a uma rede Bluetooth
+(PAN)](https://support.microsoft.com/en-us/windows/hardware/bluetooth/connect-to-a-bluetooth-network-in-windows).
+Depois que o PAN estiver conectado, descubra o IP do EV3 pela configuração de
+rede do bloco ou pela rota da interface Bluetooth no PC e informe esse IP na
+tela **Conexão**. O endereço pode variar conforme a rede.
 
 O mapeamento físico preserva todos os valores numéricos recebidos:
 

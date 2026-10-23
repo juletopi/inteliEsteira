@@ -14,13 +14,16 @@ class Telemetry:
     def record(self, direction, message):
         now = datetime.now(timezone.utc).isoformat()
         payload = message.payload
-        if not payload.startswith(("GARRA", "SENSOR", "DESTINO", "ESTEIRA", "SISTEMA")):
+        if not payload.startswith(("GARRA", "SENSOR", "PRESENCA", "DESTINO", "ESTEIRA", "SISTEMA")):
             payload = "MENSAGEM_NAO_OPERACIONAL"
         with self._lock:
+            # Heartbeats nao devem apagar o historico util da operacao.
+            if payload == "SISTEMA:PING":
+                if direction == "RX" and message.kind == "ACK":
+                    self.last_ping_at = now
+                return
             self._frames.append({"data": now, "direcao": direction, "tipo": message.kind,
                                  "ciclo_id": message.cycle_id, "mensagem": payload})
-            if direction == "RX" and message.kind == "ACK" and payload == "SISTEMA:PING":
-                self.last_ping_at = now
 
     def snapshot(self):
         with self._lock:

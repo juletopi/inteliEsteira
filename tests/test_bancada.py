@@ -28,7 +28,7 @@ class BenchTests(unittest.TestCase):
     def test_missing_pickup_completion_never_starts_ev3(self):
         with TemporaryDirectory() as folder:
             with virtual_bench(Path(folder) / "bench.db", arduino_options={
-                "suppress_events": ("GARRA_COLETA_CONCLUIDA",),
+                "suppress_events": ("GARRA_PASSO_CONCLUIDO",),
             }) as (app, arduino, ev3):
                 app.extensions["system_controller"].gripper_timeout = 0.15
                 client = app.test_client()
@@ -43,7 +43,7 @@ class BenchTests(unittest.TestCase):
                 self.assertEqual(app.extensions["workflow"].snapshot()["fluxo"]["estado"], "ERRO")
                 self.assertEqual(app.extensions["workflow"].snapshot()["itens"], [])
                 self.assertEqual(ev3.motion.codes, [])
-                self.assertFalse(any(command == "GARRA:POSICIONAR:E01" for _cycle, command in arduino.commands_applied))
+                self.assertFalse(any(command.startswith("GARRA:PASSO:E:") for _cycle, command in arduino.commands_applied))
 
     def test_selected_bench_database_keeps_catalog_aruco_and_queue_on_restart(self):
         with TemporaryDirectory() as folder:

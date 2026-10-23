@@ -61,6 +61,7 @@ class ControllerTests(unittest.TestCase):
             self.command_payloads(),
             [
                 "SISTEMA:PING",
+                "SISTEMA:STATUS",
                 "GARRA:AREA:P01",
                 "GARRA:PEGAR",
                 "GARRA:POSICIONAR:E01",

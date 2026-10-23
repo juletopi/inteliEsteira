@@ -31,6 +31,10 @@ class CycleStoppedError(ControllerError):
     code = "CYCLE_STOPPED"
 
 
+class UnitDiscardedError(ControllerError):
+    code = "UNIDADE_DESCARTADA"
+
+
 class CycleProcessingError(ControllerError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -71,6 +75,7 @@ class SystemController:
         command_retries=1,
         gripper_timeout=30.0,
         require_physical_arrival=True,
+        gripper_profile_provider=None,
     ):
         self.state = state
         self.gripper = gripper
@@ -83,8 +88,12 @@ class SystemController:
         self.command_retries = command_retries
         self.gripper_timeout = gripper_timeout
         self.require_physical_arrival = require_physical_arrival
+        self.gripper_profile_provider = gripper_profile_provider
+        self.gripper_firmware_status = None
         self._cycle_lock = Lock()
         self._stop_requested = Event()
+        self._discard_requested = Event()
+        self._reading_wait = False
         self._external_cancelled = None
 
         self.state.update(**self._connection_status())
@@ -104,7 +113,8 @@ class SystemController:
 
     def process_next_product(self, *, qr_code=None, occupancy=None, unavailable=None,
                              identified_qr_code=None, expected_product_id=None, cycle_id=None,
-                             on_identified=None, presence_confirmed=False, cancelled=None):
+                             on_identified=None, presence_confirmed=False, cancelled=None,
+                             on_read_retry=None):
         if not self._cycle_lock.acquire(blocking=False):
             raise SystemBusyError("Ja existe um ciclo em processamento.")
 
@@ -113,6 +123,7 @@ class SystemController:
         try:
             self._external_cancelled = cancelled
             self._stop_requested.clear()
+            self._discard_requested.clear()
             self._ensure_not_stopped()
             current_state = self.state.snapshot()["estado"]
             if current_state == "ERRO":
@@ -123,10 +134,9 @@ class SystemController:
                 raise SystemNotReadyError(
                     "O sistema esta parado e precisa ser resetado."
                 )
-            self.ensure_operation_ready()
-
-            # Ambos precisam estar prontos antes de movimentar a garra.
             self._connect_hardware()
+            self.ensure_operation_ready()
+            self.require_gripper_ready()
 
             if not self.camera.is_connected():
                 connected = (
@@ -166,43 +176,83 @@ class SystemController:
 
             if presence_confirmed:
                 self.cycles.add_event(cycle_id, "PRESENCA_CONFIRMADA", {"sensor": "HC-SR04"})
+            profile = self.gripper_profile_provider() if self.gripper_profile_provider else None
+            if profile:
+                self.gripper.configure_profile(profile, cycle_id, timeout=self.command_timeout,
+                                               retries=self.command_retries)
             self.gripper.set_pickup_area(cycle_id, timeout=self.command_timeout, retries=self.command_retries)
             self.cycles.add_event(cycle_id, "AREA_COLETA_CONFIGURADA", {"area": self.gripper.pickup_zone})
             self.state.transition("PEGANDO_OBJETO")
             self.cycles.set_status(cycle_id, "PEGANDO_OBJETO")
-            for action, event, phase in ((self.gripper.pick_object, "OBJETO_COLETADO", None),
-                                         (self.gripper.place_on_conveyor, "GARRA_POSICIONADA_SOBRE_ESTEIRA", "POSICIONANDO_OBJETO"),
-                                         (self.gripper.release_object, "OBJETO_ENTREGUE_NA_ESTEIRA", "SOLTANDO_OBJETO"),
-                                         (self.gripper.home, "GARRA_RETORNOU", None)):
-                self._ensure_not_stopped()
-                if phase:
-                    self.state.transition(phase)
-                    self.cycles.set_status(cycle_id, phase)
-                response = action(cycle_id, timeout=self.command_timeout, retries=self.command_retries,
-                                  event_timeout=self.gripper_timeout, cancelled=self._cancelled)
-                self.cycles.add_event(cycle_id, event, {"confirmacao": response.payload, "area": self.gripper.pickup_zone})
-                if event == "OBJETO_COLETADO":
-                    self.state.update(garra="segurando")
+            if profile:
+                for index, step in enumerate(profile["pickup"], 1):
+                    self._ensure_not_stopped()
+                    response = self.gripper.move_profile_step(
+                        "pickup", index, step, cycle_id, timeout=self.command_timeout,
+                        retries=self.command_retries, event_timeout=self.gripper_timeout,
+                        cancelled=self._cancelled)
+                    self.cycles.add_event(cycle_id, "GARRA_PASSO_CONCLUIDO", {
+                        "fase": "pegar", "ordem": index, "nome": step["name"],
+                        "confirmacao": response.payload,
+                    })
+                self.state.update(garra="segurando")
+                self.cycles.add_event(cycle_id, "OBJETO_COLETADO", {
+                    "confirmacao": "todos_os_passos_de_pega_concluidos", "area": self.gripper.pickup_zone,
+                    "perfil": profile["version"],
+                })
+                self.state.transition("POSICIONANDO_OBJETO")
+                self.cycles.set_status(cycle_id, "POSICIONANDO_OBJETO")
+                last_grip_progress = 0.0
+                opened, closed = profile["gripper"]["open"], profile["gripper"]["closed"]
+                for index, step in enumerate(profile["delivery"], 1):
+                    self._ensure_not_stopped()
+                    progress = (step["G"] - closed) / (opened - closed)
+                    if self.state.snapshot()["estado"] == "POSICIONANDO_OBJETO" and progress >= 0.5 and progress > last_grip_progress:
+                        self.state.transition("SOLTANDO_OBJETO")
+                        self.cycles.set_status(cycle_id, "SOLTANDO_OBJETO")
+                    response = self.gripper.move_profile_step(
+                        "delivery", index, step, cycle_id, timeout=self.command_timeout,
+                        retries=self.command_retries, event_timeout=self.gripper_timeout,
+                        cancelled=self._cancelled)
+                    self.cycles.add_event(cycle_id, "GARRA_PASSO_CONCLUIDO", {
+                        "fase": "entregar", "ordem": index, "nome": step["name"],
+                        "confirmacao": response.payload,
+                    })
+                    last_grip_progress = progress
+                if self.state.snapshot()["estado"] == "POSICIONANDO_OBJETO":
+                    self.state.transition("SOLTANDO_OBJETO")
+                    self.cycles.set_status(cycle_id, "SOLTANDO_OBJETO")
+                self.cycles.add_event(cycle_id, "GARRA_POSICIONADA_SOBRE_ESTEIRA", {
+                    "confirmacao": "sequencia_de_entrega_concluida", "perfil": profile["version"],
+                })
+                self.cycles.add_event(cycle_id, "OBJETO_ENTREGUE_NA_ESTEIRA", {
+                    "confirmacao": "todos_os_passos_de_entrega_concluidos", "area": "E01",
+                    "perfil": profile["version"],
+                })
+                self.cycles.add_event(cycle_id, "GARRA_RETORNOU", {
+                    "confirmacao": "ultimo_passo_no_neutro", "perfil": profile["version"],
+                })
+            else:
+                for action, event, phase in ((self.gripper.pick_object, "OBJETO_COLETADO", None),
+                                             (self.gripper.place_on_conveyor, "GARRA_POSICIONADA_SOBRE_ESTEIRA", "POSICIONANDO_OBJETO"),
+                                             (self.gripper.release_object, "OBJETO_ENTREGUE_NA_ESTEIRA", "SOLTANDO_OBJETO"),
+                                             (self.gripper.home, "GARRA_RETORNOU", None)):
+                    self._ensure_not_stopped()
+                    if phase:
+                        self.state.transition(phase)
+                        self.cycles.set_status(cycle_id, phase)
+                    response = action(cycle_id, timeout=self.command_timeout, retries=self.command_retries,
+                                      event_timeout=self.gripper_timeout, cancelled=self._cancelled)
+                    self.cycles.add_event(cycle_id, event, {"confirmacao": response.payload, "area": self.gripper.pickup_zone})
+                    if event == "OBJETO_COLETADO":
+                        self.state.update(garra="segurando")
             self._ensure_not_stopped()
             self.state.transition("OBJETO_POSICIONADO", garra="livre")
             self.cycles.add_event(cycle_id, "OBJETO_POSICIONADO")
             self.state.transition("LENDO_ARUCO")
             self.cycles.set_status(cycle_id, "LENDO_ARUCO")
-            captured_qr_code = identified_qr_code if identified_qr_code is not None else self.camera.scan_aruco(
-                cancelled=self._cancelled)
-            self.cycles.set_qr_code(cycle_id, captured_qr_code)
-            self.cycles.add_event(cycle_id, "ARUCO_LIDO")
-            self._ensure_not_stopped()
-            self.state.transition("VALIDANDO_ARUCO", qr_code=captured_qr_code)
-
-            decision = classify_qr_code(
-                captured_qr_code,
-                self.products.resolve,
-                occupancy=occupancy,
-                unavailable=unavailable,
-            )
-            if expected_product_id is not None and decision.product.product_id.lower() != expected_product_id.lower():
-                raise ClassificationError(f"Esperado {expected_product_id}; a camera identificou {decision.product.product_id}.")
+            captured_qr_code, decision = self._identify_on_belt(
+                cycle_id, identified_qr_code, occupancy, unavailable, expected_product_id, on_read_retry)
             self._ensure_not_stopped()
             self.state.transition(
                 "DESTINO_DEFINIDO",
@@ -300,6 +350,11 @@ class SystemController:
             if cycle_recorded:
                 self.cycles.fail(cycle_id, code, message)
             raise CycleProcessingError(code, message) from exc
+        except UnitDiscardedError as exc:
+            # O operador retirou o cubo da esteira: nada foi enviado ao EV3.
+            self.cycles.fail(cycle_id, exc.code, exc.message)
+            self.state.reset(**self._connection_status())
+            raise
         except ControllerError:
             raise
         except Exception as exc:
@@ -315,16 +370,148 @@ class SystemController:
             raise CycleProcessingError("UNEXPECTED_ERROR", str(exc)) from exc
         finally:
             self._external_cancelled = None
+            self._reading_wait = False
             self.state.update(**self._connection_status())
             self._cycle_lock.release()
 
+    def _identify_on_belt(self, cycle_id, identified_qr_code, occupancy, unavailable,
+                          expected_product_id, on_read_retry):
+        """Le e classifica o ArUco do cubo ja entregue na esteira.
+
+        Com on_read_retry (operacao automatica), uma leitura falha nao derruba o fluxo:
+        tenta de novo ate o operador corrigir a etiqueta, cadastrar o marcador ou
+        descartar a unidade. Sem ele, a primeira falha encerra o ciclo.
+        """
+        reported = False
+        while True:
+            self._ensure_not_stopped()
+            if self._discard_requested.is_set():
+                raise UnitDiscardedError("Unidade descartada pelo operador; a esteira nao foi acionada.")
+            try:
+                captured = identified_qr_code if identified_qr_code is not None else self.camera.scan_aruco(
+                    cancelled=lambda: self._cancelled() or self._discard_requested.is_set())
+                decision = classify_qr_code(captured, self.products.resolve,
+                                            occupancy=occupancy, unavailable=unavailable)
+                if expected_product_id is not None and decision.product.product_id.lower() != expected_product_id.lower():
+                    raise ClassificationError(f"Esperado {expected_product_id}; a camera identificou {decision.product.product_id}.")
+            except (CameraError, ClassificationError) as exc:
+                if on_read_retry is None or identified_qr_code is not None:
+                    raise
+                if self._discard_requested.is_set() or self._cancelled():
+                    continue
+                message = getattr(exc, "message", str(exc))
+                if not reported:
+                    self.cycles.add_event(cycle_id, "LEITURA_PENDENTE", {"codigo": getattr(exc, "code", "CAMERA_ERROR"),
+                                                                         "mensagem": message})
+                    reported = True
+                self._reading_wait = True
+                on_read_retry(getattr(exc, "code", "CAMERA_ERROR"), message)
+                continue
+            self._reading_wait = False
+            self.cycles.set_qr_code(cycle_id, captured)
+            self.cycles.add_event(cycle_id, "ARUCO_LIDO")
+            self._ensure_not_stopped()
+            self.state.transition("VALIDANDO_ARUCO", qr_code=captured)
+            return captured, decision
+
+    def discard_waiting_unit(self):
+        """Encerra a unidade parada na leitura (cubo retirado da esteira pelo operador)."""
+        if not self._reading_wait:
+            raise SystemBusyError("Nenhuma unidade aguardando leitura do ArUco.")
+        self._discard_requested.set()
+        return {"descartada": True}
+
     def ensure_operation_ready(self):
-        if getattr(self.gripper.arduino, "mode", "mock") == "serial" and not self.gripper.calibrated:
-            raise SystemNotReadyError("Calibre os perfis fisicos P01 e E01 antes de habilitar a garra real.")
         if self.require_physical_arrival and getattr(self.conveyor.device, "mode", "mock") == "ev3":
             sensor = self.conveyor.arrival_sensor
             if sensor is None or getattr(sensor, "mode", "mock") != "serial":
                 raise SystemNotReadyError("Configure um sensor real de chegada no Arduino: o EV3 atual confirma rotacoes, nao a presenca do produto no destino.")
+
+    def read_gripper_firmware_status(self):
+        device = self.gripper.arduino
+        cycle_id = "FW_STATUS"
+        device.execute("SISTEMA:STATUS", cycle_id, timeout=self.command_timeout, retries=0)
+        message = device.wait_for_event("SISTEMA_STATUS", cycle_id, timeout=self.command_timeout)
+        status = {}
+        for field in message.payload.split(":")[1:]:
+            key, separator, value = field.partition("=")
+            if separator:
+                status[key.lower()] = value == "1"
+        if not {"reset_required", "calibrated", "pose_referenced"}.issubset(status):
+            raise SystemNotReadyError("O firmware não informou o estado de calibração e referência esperado.")
+        self.gripper_firmware_status = status
+        return status
+
+    def require_gripper_ready(self):
+        status = self.read_gripper_firmware_status()
+        if status["reset_required"]:
+            raise SystemNotReadyError("O Arduino ainda exige Resetar a operação.")
+        if not status["calibrated"]:
+            raise SystemNotReadyError("Calibração do automático não validada no Arduino. No módulo Calibração, teste os pontos e pressione ‘Validar para operação coletiva’.")
+        if not status["pose_referenced"]:
+            raise SystemNotReadyError("Confirme o braço fisicamente no ponto neutro pelo Dashboard antes de iniciar movimentos.")
+        return status
+
+    def confirm_neutral_pose(self):
+        if not self._cycle_lock.acquire(blocking=False):
+            raise SystemBusyError("Aguarde o comando atual terminar antes de confirmar o neutro.")
+        try:
+            profile = self.gripper_profile_provider() if self.gripper_profile_provider else None
+            if not profile:
+                raise SystemNotReadyError("Não há perfil de garra salvo para determinar o ponto neutro.")
+            device = self.gripper.arduino
+            if not device.is_connected():
+                device.connect()
+            neutral = profile["neutral"]
+            command = f"SISTEMA:SYNC:{neutral['B']}:{neutral['A']}:{neutral['C']}:{neutral['G']}"
+            response = device.execute(command, "POSE_SYNC", timeout=self.command_timeout, retries=0)
+            event = device.wait_for_event("POSE_REFERENCE_CONFIRMED", "POSE_SYNC", timeout=self.command_timeout)
+            status = self.read_gripper_firmware_status()
+            if not status["pose_referenced"]:
+                raise SystemNotReadyError("O Arduino não confirmou a referência da pose neutra.")
+            return {"pose": neutral, "perfil": profile["version"], "ack": response.payload,
+                    "evento": event.payload, "firmware": status}
+        finally:
+            self._cycle_lock.release()
+
+    def read_presence_distance(self):
+        """Mede o HC-SR04 agora (mediana de 9 disparos); -1 quando nao ha eco."""
+        device = self.gripper.arduino
+        device.execute("PRESENCA:LEITURA", "PRESENCA_LEITURA", timeout=self.command_timeout, retries=0)
+        event = device.wait_for_event("PRESENCA_LEITURA", "PRESENCA_LEITURA", timeout=self.command_timeout + 1)
+        median, low, high, valid = (int(value) for value in event.payload.split(":")[1:5])
+        return {"mediana_cm": median, "minima_cm": low, "maxima_cm": high, "leituras_validas": valid}
+
+    def ensure_neutral_reference(self):
+        """Operacao automatica: assume o braco no neutro salvo, sem clique do operador.
+
+        No primeiro movimento os servos sao energizados nos angulos do neutro; se o braco
+        estiver fora dele, salta para o neutro antes de seguir o perfil suavemente.
+        """
+        status = self.read_gripper_firmware_status()
+        if status["pose_referenced"]:
+            return status
+        try:
+            self.confirm_neutral_pose()
+        except HardwareError:
+            # Servos ainda energizados apos uma parada: o SYNC so aceita servos soltos.
+            self.release_servos()
+            self.confirm_neutral_pose()
+        return self.gripper_firmware_status
+
+    def release_servos(self):
+        """Solta os servos para alinhar o braco a mao antes de confirmar o neutro."""
+        if not self._cycle_lock.acquire(blocking=False):
+            raise SystemBusyError("Aguarde o comando atual terminar antes de soltar os servos.")
+        try:
+            device = self.gripper.arduino
+            if not device.is_connected():
+                device.connect()
+            response = device.execute("SISTEMA:LIBERAR", "LIBERAR", timeout=self.command_timeout, retries=0)
+            self.state.update(garra="livre")
+            return {"ack": response.payload, "firmware": self.read_gripper_firmware_status()}
+        finally:
+            self._cycle_lock.release()
 
     def reset(self):
         if not self._cycle_lock.acquire(blocking=False):

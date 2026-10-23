@@ -51,28 +51,28 @@ class SerialSimulatorTests(unittest.TestCase):
         self.assertFalse(self.flow.running(), self.flow.snapshot())
 
     def test_full_protocol_flow_and_lost_ack_do_not_repeat_gripper_action(self):
-        self.start_simulator(drop_ack=("GARRA:PEGAR",))
+        self.start_simulator(drop_ack=("GARRA:PASSO:P:1:",))
         self.run_flow()
         self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 1)
-        picks = [key for key in self.server.commands_applied if key[1] == "GARRA:PEGAR"]
+        picks = [key for key in self.server.commands_applied if key[1].startswith("GARRA:PASSO:P:1:")]
         self.assertEqual(len(picks), 1)
         wire = [parse_message(frame).payload for frame in self.app.extensions["arduino"].command_log]
-        self.assertEqual(wire.count("GARRA:PEGAR"), 2)
+        self.assertEqual(sum(command.startswith("GARRA:PASSO:P:1:") for command in wire), 2)
         diagnostic = self.client.get("/api/diagnostics").get_json()
         self.assertEqual(diagnostic["dispositivos"][0]["modo"], "simulator")
         self.assertIsNotNone(diagnostic["dispositivos"][0]["ping_em"])
         frames = diagnostic["dispositivos"][0]["mensagens"]
-        self.assertTrue(any(frame["tipo"] == "ACK" and frame["mensagem"] == "GARRA:PEGAR" for frame in frames))
-        self.assertTrue(any(frame["tipo"] == "EVT" and frame["mensagem"] == "GARRA_COLETA_CONCLUIDA" for frame in frames))
+        self.assertTrue(any(frame["tipo"] == "ACK" and frame["mensagem"].startswith("GARRA:PASSO:") for frame in frames))
+        self.assertTrue(any(frame["tipo"] == "EVT" and frame["mensagem"].startswith("GARRA_PASSO_CONCLUIDO") for frame in frames))
         self.assertFalse(diagnostic["chegada"]["fisica"])
         self.assertEqual(diagnostic["chegada"]["fonte"], "simulado")
 
     def test_ack_only_gripper_fault_blocks_the_next_unit(self):
-        self.start_simulator(suppress_events=("GARRA_COLETA_CONCLUIDA",))
+        self.start_simulator(suppress_events=("GARRA_PASSO_CONCLUIDO",))
         self.run_flow(("FIRST", "SECOND"))
         self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
         commands = [command for _cycle, command in self.server.commands_applied]
-        self.assertNotIn("GARRA:POSICIONAR:E01", commands)
+        self.assertFalse(any(command.startswith("GARRA:PASSO:E:") for command in commands))
         self.assertNotIn("ESTEIRA:START", commands)
         self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
 
@@ -83,7 +83,7 @@ class SerialSimulatorTests(unittest.TestCase):
         self.assertEqual(self.app.extensions["cycle_repository"].count_completed(), 0)
 
     def test_connection_loss_is_visible_and_does_not_advance_queue(self):
-        self.start_simulator(disconnect_at="GARRA:POSICIONAR:E01")
+        self.start_simulator(disconnect_at="GARRA:PASSO:E:1:")
         self.run_flow(("FIRST", "SECOND"))
         self.assertEqual(self.flow.snapshot()["fluxo"]["estado"], "ERRO")
         self.assertFalse(self.app.extensions["arduino"].is_connected())

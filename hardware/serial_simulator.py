@@ -104,11 +104,15 @@ class _Handler(socketserver.BaseRequestHandler):
                         send("ERR:SEM_CICLO:FRAME_INVALIDO")
                         continue
                     last_valid = monotonic()
-                    if command == self.server.disconnect_at:
+                    # Prefixos permitem mirar passos do perfil, ex. GARRA:PASSO:E:1:.
+                    if self.server.disconnect_at and command.startswith(self.server.disconnect_at):
                         alive[0] = False
                         break
                     key = (message.cycle_id, command)
-                    if key not in cached:
+                    # Consultas e comandos de sistema usam ids fixos (FW_STATUS,
+                    # POSE_SYNC...) e precisam responder de novo, como o firmware.
+                    repeatable = command.startswith(("SISTEMA:", "PRESENCA:")) or command in {"GARRA:STOP", "ESTEIRA:STOP"}
+                    if repeatable or key not in cached:
                         if message.cycle_id in stopped and command not in {"ESTEIRA:STOP", "GARRA:STOP", "SISTEMA:PING", "SISTEMA:RESET", "SENSOR:DESARMAR"}:
                             send(encode_message("ERR", message.cycle_id, f"{command}:CICLO_INTERROMPIDO"))
                             continue
@@ -128,7 +132,7 @@ class _Handler(socketserver.BaseRequestHandler):
                             except Empty:
                                 break
                         # ACK vem primeiro. Retransmissoes nao reaplicam a acao.
-                        if command not in self.server.drop_ack or key in ack_dropped:
+                        if not any(command.startswith(entry) for entry in self.server.drop_ack) or key in ack_dropped:
                             send(encode_message("ACK", message.cycle_id, command))
                         else:
                             ack_dropped.add(key)

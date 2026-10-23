@@ -29,10 +29,17 @@
       "aruco_id": 3
     },
     {
+      "produto_id": "PROD-NORDESTE",
+      "uf": "PE",
+      "ativo": true,
+      "aruco_id": 15
+    },
+    {
       "produto_id": "PROD-NORDESTE-01",
       "uf": "CE",
-      "ativo": true,
-      "aruco_id": 4
+      "ativo": false,
+      "aruco_id": 4,
+      "excluido": true
     },
     {
       "produto_id": "PROD-NORDESTE-02",
@@ -65,6 +72,12 @@
       "aruco_id": 9
     },
     {
+      "produto_id": "PROD-SUL",
+      "uf": "SC",
+      "ativo": true,
+      "aruco_id": 14
+    },
+    {
       "produto_id": "PROD-SUL-01",
       "uf": "PR",
       "ativo": true,
@@ -80,8 +93,16 @@
     {
       "produto_id": "PROD-SUL-03",
       "uf": "RS",
-      "ativo": true,
-      "aruco_id": 12
+      "ativo": false,
+      "aruco_id": 12,
+      "excluido": true
+    },
+    {
+      "produto_id": "TESTE-JSON",
+      "uf": "AM",
+      "ativo": false,
+      "aruco_id": 13,
+      "excluido": true
     }
   ]
 }

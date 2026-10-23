@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from io import BytesIO
 import json
+import os
 from threading import RLock
 from time import monotonic, sleep
 
@@ -72,6 +73,7 @@ class ArucoCamera:
         dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_250)
         self._aruco_detector = aruco.ArucoDetector(dictionary)
         self._capture = None
+        self._connected = False
         self._lock = RLock()
         self._last_qr_code = None
         self._last_qr_time = 0.0
@@ -90,16 +92,27 @@ class ArucoCamera:
             if self._capture is not None and self._capture.isOpened():
                 return True
 
-            capture = self._cv2.VideoCapture(self.camera_index)
-            if capture is None or not capture.isOpened():
+            # No Windows o backend padrao (Media Foundation) abriu a C270 sem entregar
+            # frames e levava ~80 s; DirectShow abre em segundos. Padrao fica de reserva.
+            backends = ([self._cv2.CAP_DSHOW] if os.name == "nt" and hasattr(self._cv2, "CAP_DSHOW") else []) + [None]
+            capture = None
+            for backend in backends:
+                capture = (self._cv2.VideoCapture(self.camera_index) if backend is None
+                           else self._cv2.VideoCapture(self.camera_index, backend))
+                if capture is not None and capture.isOpened():
+                    break
                 if capture is not None:
                     capture.release()
+                capture = None
+            if capture is None:
                 self._capture = None
+                self._connected = False
                 return False
 
             capture.set(self._cv2.CAP_PROP_FRAME_WIDTH, self.width)
             capture.set(self._cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self._capture = capture
+            self._connected = True
             return True
 
     def disconnect(self) -> None:
@@ -107,6 +120,7 @@ class ArucoCamera:
             if self._capture is not None:
                 self._capture.release()
             self._capture = None
+            self._connected = False
 
     def capture_frame(self):
         with self._lock:
@@ -224,17 +238,23 @@ class ArucoCamera:
         return self.encode_jpeg(frame, quality=quality)
 
     def is_connected(self) -> bool:
-        with self._lock:
-            return self._capture is not None and self._capture.isOpened()
+        # Status polling must not wait for a camera read while its lock is held.
+        return self._connected
 
     def resolution(self) -> dict[str, int] | None:
-        with self._lock:
-            if self._capture is None or not self._capture.isOpened():
+        # Return quickly when a capture is in progress; the configured size is
+        # still useful to the UI and avoids blocking the whole Flask request.
+        if not self._lock.acquire(blocking=False):
+            return {"largura": self.width, "altura": self.height} if self._connected else None
+        try:
+            if not self._connected or self._capture is None:
                 return None
             return {
                 "largura": int(self._capture.get(self._cv2.CAP_PROP_FRAME_WIDTH)),
                 "altura": int(self._capture.get(self._cv2.CAP_PROP_FRAME_HEIGHT)),
             }
+        finally:
+            self._lock.release()
 
 
 def build_product_payload(product_id: str) -> str:

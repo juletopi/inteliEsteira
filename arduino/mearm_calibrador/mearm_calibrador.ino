@@ -41,6 +41,9 @@ const unsigned long INTERVALO_GARRA_MS = 40;
 
 bool servosAtivos = false;
 bool garraAtiva   = false;
+// A referencia e apenas logica: os servos nao informam a posicao fisica.
+// Ela fica invalida apos cada boot ate o operador confirmar o neutro.
+bool poseReferenciaConfirmada = false;
 int velocidadeMs  = 24;
 
 // Valores iniciais da garra (aberta 120°, fechada 85°)
@@ -92,6 +95,15 @@ unsigned long sensorCandidateSince = 0;
 unsigned long sensorClearSince = 0;
 bool sensorCandidate = false;
 bool sensorPresent = false;
+// O HC-SR04 oscila 1-2 cm e perde ecos: decide pela mediana das ultimas leituras e
+// so declara ausente acima do limite + histerese, para o fundo da bancada perto do
+// limite nao prender o estado em PRESENTE.
+const byte SENSOR_JANELA = 5;
+const int SENSOR_HISTERESE_CM = 2;
+const int SENSOR_SEM_ECO = 999;
+int sensorJanela[SENSOR_JANELA];
+byte sensorJanelaIdx = 0, sensorJanelaN = 0;
+unsigned long sensorRelatoAt = 0;
 
 #if defined(__AVR__)
 static_assert(sizeof(Ponto) == 8 && sizeof(AxisLimits) == 16, "Layout EEPROM AVR alterado");
@@ -102,6 +114,12 @@ static_assert(EEPROM_NEUTRAL_DATA_ADDR + sizeof(Ponto) <= EEPROM_SENSOR_MAGIC_AD
 // A ponte usa as mesmas variaveis, EEPROM e rotinas do calibrador.
 bool executarEtapaXY(byte etapa);
 bool lerLinhaSerial(char *destino, size_t capacidade);
+void moverSuave(int destB, int destBraco, int destCotovelo, int destG, int delayMs);
+void aguardarCiclo(int ms);
+void desenergizarServos();
+int medirDistanciaCm();
+int medianaCm(int *valores, byte n);
+void reiniciarDeteccaoSensor();
 #include "backend_config.h"
 #include "backend_protocol.h"
 
@@ -123,18 +141,52 @@ void carregarConfigSensor() {
   if (sensorStableMs < 3000 || sensorStableMs > 5000) sensorStableMs = 3000;
 }
 
-void monitorarSensor() {
-  if (!sensorEnabled || cicloEmExecucao || millis() - sensorLastReadAt < 60) return;
-  sensorLastReadAt = millis();
+// Um disparo; SENSOR_SEM_ECO quando nao ha eco no alcance.
+int medirDistanciaCm() {
   digitalWrite(PINO_SENSOR_TRIG, LOW);
   delayMicroseconds(2);
   digitalWrite(PINO_SENSOR_TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(PINO_SENSOR_TRIG, LOW);
   unsigned long duracao = pulseIn(PINO_SENSOR_ECHO, HIGH, 25000UL);
-  int distancia = duracao ? (int)(duracao / 58UL) : -1;
+  return duracao ? (int)(duracao / 58UL) : SENSOR_SEM_ECO;
+}
+
+// Ordena uma copia pequena (n <= 9) e devolve o valor central.
+int medianaCm(int *valores, byte n) {
+  int ordenados[9];
+  for (byte i = 0; i < n; ++i) {
+    int v = valores[i];
+    byte j = i;
+    for (; j > 0 && ordenados[j - 1] > v; --j) ordenados[j] = ordenados[j - 1];
+    ordenados[j] = v;
+  }
+  return ordenados[n / 2];
+}
+
+void reiniciarDeteccaoSensor() {
+  sensorCandidate = sensorPresent = false;
+  sensorClearSince = 0;
+  sensorJanelaIdx = sensorJanelaN = 0;
+  sensorLastReadAt = 0;
+}
+
+void monitorarSensor() {
+  if (!sensorEnabled || cicloEmExecucao || millis() - sensorLastReadAt < 60) return;
+  sensorLastReadAt = millis();
+  sensorJanela[sensorJanelaIdx] = medirDistanciaCm();
+  sensorJanelaIdx = (sensorJanelaIdx + 1) % SENSOR_JANELA;
+  if (sensorJanelaN < SENSOR_JANELA) ++sensorJanelaN;
+  if (sensorJanelaN < 3) return;
+  int distancia = medianaCm(sensorJanela, sensorJanelaN);
   unsigned long agora = millis();
   bool dentro = distancia >= 2 && distancia <= sensorDistanceCm;
+  bool fora = distancia > sensorDistanceCm + SENSOR_HISTERESE_CM;
+
+  if (agora - sensorRelatoAt >= 1000) {
+    sensorRelatoAt = agora;
+    Serial.print(F("SENSOR:DISTANCIA:")); Serial.println(distancia == SENSOR_SEM_ECO ? -1 : distancia);
+  }
 
   if (dentro) {
     sensorClearSince = 0;
@@ -146,16 +198,20 @@ void monitorarSensor() {
       sensorPresent = true;
       Serial.print(F("SENSOR:PRESENTE:")); Serial.println(distancia);
     }
-  } else {
+  } else if (fora) {
     sensorCandidate = false;
     if (sensorPresent) {
       if (!sensorClearSince) sensorClearSince = agora;
       else if (agora - sensorClearSince >= 300) {
         sensorPresent = false;
         sensorClearSince = 0;
-        Serial.print(F("SENSOR:AUSENTE:")); Serial.println(distancia);
+        Serial.print(F("SENSOR:AUSENTE:")); Serial.println(distancia == SENSOR_SEM_ECO ? -1 : distancia);
       }
     }
+  } else {
+    // Faixa de histerese (ou < 2 cm, leitura nao confiavel): mantem o estado atual.
+    sensorCandidate = false;
+    sensorClearSince = 0;
   }
 }
 
@@ -164,7 +220,7 @@ bool verificarParadaCiclo() {
   while (lerLinhaSerial(linha, sizeof(linha))) {
     // ACK de repeticoes, PING e STOP continuam atendidos durante moverSuave.
     if (processarFrameBackend(linha)) continue;
-    if (strcmp(linha, "STOP") == 0 || strcmp(linha, "FREE") == 0) {
+    if (strcmp_P(linha, PSTR("STOP")) == 0 || strcmp_P(linha, PSTR("FREE")) == 0) {
       backendParar();
       if (sBase.attached()) sBase.detach();
       if (sBraco.attached()) sBraco.detach();
@@ -685,6 +741,24 @@ void executarTesteCompleto() {
   Serial.println(F("========================================"));
 }
 
+bool comandoMoveManual(const char *cmd) {
+  if (strncmp_P(cmd, PSTR("POSE:"), 5) == 0 || strncmp_P(cmd, PSTR("ARM:"), 4) == 0) return true;
+  if (strcmp_P(cmd, PSTR("H")) == 0 || strcmp_P(cmd, PSTR("HOME")) == 0 ||
+      strcmp_P(cmd, PSTR("RUN")) == 0 || strcmp_P(cmd, PSTR("LOAD")) == 0 ||
+      strcmp_P(cmd, PSTR("TESTY")) == 0 || strcmp_P(cmd, PSTR("TESTX")) == 0 || strcmp_P(cmd, PSTR("TESTN")) == 0 ||
+      strcmp_P(cmd, PSTR("HOLD")) == 0 || strcmp_P(cmd, PSTR("ATTACH")) == 0 ||
+      strcmp_P(cmd, PSTR("G:HOLD")) == 0 || strcmp_P(cmd, PSTR("G:ON")) == 0 ||
+      strcmp_P(cmd, PSTR("G:OPEN")) == 0 || strcmp_P(cmd, PSTR("G:CLOSE")) == 0 ||
+      strcmp_P(cmd, PSTR("G:TEST")) == 0 || strcmp_P(cmd, PSTR("TEST:G")) == 0 ||
+      strcmp_P(cmd, PSTR("B:HOLD")) == 0 ||
+      strcmp_P(cmd, PSTR("A:HOLD")) == 0 || strcmp_P(cmd, PSTR("D:HOLD")) == 0 ||
+      strcmp_P(cmd, PSTR("C:HOLD")) == 0 || strcmp_P(cmd, PSTR("E:HOLD")) == 0 ||
+      strcmp_P(cmd, PSTR("A:TEST")) == 0 || strcmp_P(cmd, PSTR("D:TEST")) == 0) return true;
+  if ((cmd[0] == 'B' || cmd[0] == 'A' || cmd[0] == 'D' || cmd[0] == 'C' ||
+       cmd[0] == 'E' || cmd[0] == 'G') && cmd[1] >= '0' && cmd[1] <= '9') return true;
+  return false;
+}
+
 // =========================================================================
 // 6. PROCESSADOR DE COMANDOS SERIAL
 // =========================================================================
@@ -693,17 +767,53 @@ void processarComando(const char* cmd) {
   if (processarFrameBackend(cmd) || processarComandoAuto(cmd)) return;
   // Nao deixa o calibrador alterar posicoes ou EEPROM entre etapas automaticas.
   if (backendOcupado()) {
-    if (strcmp(cmd, "STOP") == 0 || strcmp(cmd, "FREE") == 0 || strcmp(cmd, "DETACH") == 0) backendParar();
-    else if (strcmp(cmd, "?") != 0 && strcmp(cmd, "STATUS") != 0) {
+    if (strcmp_P(cmd, PSTR("STOP")) == 0 || strcmp_P(cmd, PSTR("FREE")) == 0 || strcmp_P(cmd, PSTR("DETACH")) == 0) backendParar();
+    else if (strcmp_P(cmd, PSTR("?")) != 0 && strcmp_P(cmd, PSTR("STATUS")) != 0) {
       Serial.println(F("[BLOQUEADO] Backend possui o ciclo; envie STOP antes de calibrar."));
       return;
     }
   }
 
-  // Posição absoluta enviada pelo fluxo gravado na interface Web.
-  if (strncmp(cmd, "POSE:", 5) == 0) {
+  // Confirma a referencia logica sem attach(), Servo.write() ou movimento.
+  if (strncmp_P(cmd, PSTR("SYNC:"), 5) == 0) {
     int baseVal = 0, bracoVal = 0, cotoveloVal = 0, garraVal = 0;
-    if (sscanf(cmd + 5, "%d:%d:%d:%d", &baseVal, &bracoVal, &cotoveloVal, &garraVal) == 4) {
+    char trailing;
+    if (cicloEmExecucao || garraMovendo || sBase.attached() || sBraco.attached() ||
+        sCotovelo.attached() || sGarra.attached() || backendOcupado()) {
+      Serial.println(F("[POSE_SYNC_REJECTED] Solte os servos e pare o ciclo antes de sincronizar."));
+      return;
+    }
+    if (sscanf_P(cmd + 5, PSTR("%d:%d:%d:%d%c"), &baseVal, &bracoVal, &cotoveloVal, &garraVal, &trailing) != 4 ||
+        baseVal < minB || baseVal > maxB || bracoVal < minBraco || bracoVal > maxBraco ||
+        cotoveloVal < minCotovelo || cotoveloVal > maxCotovelo || garraVal < minG || garraVal > maxG) {
+      Serial.println(F("[POSE_SYNC_REJECTED] Angulos invalidos ou fora dos limites salvos."));
+      return;
+    }
+    if (baseVal != pontoNeutro.base || bracoVal != pontoNeutro.braco ||
+        cotoveloVal != pontoNeutro.cotovelo || garraVal != pontoNeutro.garra) {
+      Serial.println(F("[POSE_SYNC_REJECTED] A pose informada nao corresponde ao ponto neutro salvo."));
+      return;
+    }
+    angB = baseVal; angBraco = bracoVal; angCotovelo = cotoveloVal;
+    angG = destinoGarra = garraVal;
+    poseReferenciaConfirmada = true;
+    Serial.print(F("[POSE_SYNCED] B:")); Serial.print(angB);
+    Serial.print(F(" A:")); Serial.print(angBraco);
+    Serial.print(F(" C:")); Serial.print(angCotovelo);
+    Serial.print(F(" G:")); Serial.println(angG);
+    return;
+  }
+
+  if (!poseReferenciaConfirmada && comandoMoveManual(cmd)) {
+    Serial.println(F("[BLOQUEADO] Confirme a pose fisica inicial com SYNC antes de mover."));
+    if (strncmp_P(cmd, PSTR("POSE:"), 5) == 0) Serial.println(F("[POSE_ABORTED]"));
+    return;
+  }
+
+  // Posição absoluta enviada pelo fluxo gravado na interface Web.
+  if (strncmp_P(cmd, PSTR("POSE:"), 5) == 0) {
+    int baseVal = 0, bracoVal = 0, cotoveloVal = 0, garraVal = 0;
+    if (sscanf_P(cmd + 5, PSTR("%d:%d:%d:%d"), &baseVal, &bracoVal, &cotoveloVal, &garraVal) == 4) {
       cicloEmExecucao = true;
       abortarCiclo = false;
       moverSuave(baseVal, bracoVal, cotoveloVal, garraVal, velocidadeMs);
@@ -713,7 +823,7 @@ void processarComando(const char* cmd) {
     return;
   }
 
-  if (strncmp(cmd, "SPEED:", 6) == 0) {
+  if (strncmp_P(cmd, PSTR("SPEED:"), 6) == 0) {
     int novaVelocidade = atoi(cmd + 6);
     if (novaVelocidade == 16 || novaVelocidade == 24 || novaVelocidade == 32) {
       velocidadeMs = novaVelocidade;
@@ -723,14 +833,14 @@ void processarComando(const char* cmd) {
     return;
   }
 
-  if (strcmp(cmd, "SEQSTART") == 0) {
+  if (strcmp_P(cmd, PSTR("SEQSTART")) == 0) {
     abortarCiclo = false;
     Serial.println(F("[SEQUENCE_READY]"));
     return;
   }
 
-  if (strncmp(cmd, "SENSOR:", 7) == 0) {
-    if (strcmp(cmd, "SENSOR:OFF") == 0) {
+  if (strncmp_P(cmd, PSTR("SENSOR:"), 7) == 0) {
+    if (strcmp_P(cmd, PSTR("SENSOR:OFF")) == 0) {
       sensorEnabled = false;
       sensorCandidate = false;
       sensorPresent = false;
@@ -741,16 +851,13 @@ void processarComando(const char* cmd) {
     }
     int distancia = 0;
     unsigned long estabilidade = 0;
-    if (sscanf(cmd + 7, "ON:%d:%lu", &distancia, &estabilidade) == 2 &&
+    if (sscanf_P(cmd + 7, PSTR("ON:%d:%lu"), &distancia, &estabilidade) == 2 &&
         distancia >= 2 && distancia <= 100 &&
         (estabilidade == 3000 || estabilidade == 4000 || estabilidade == 5000)) {
       sensorDistanceCm = distancia;
       sensorStableMs = estabilidade;
       sensorEnabled = true;
-      sensorCandidate = false;
-      sensorPresent = false;
-      sensorClearSince = 0;
-      sensorLastReadAt = 0;
+      reiniciarDeteccaoSensor();
       salvarConfigSensor();
       Serial.print(F("[SENSOR] HC-SR04 ativo; distancia=")); Serial.print(sensorDistanceCm);
       Serial.print(F("cm; estabilidade=")); Serial.print(sensorStableMs / 1000); Serial.println(F("s."));
@@ -759,7 +866,7 @@ void processarComando(const char* cmd) {
   }
 
   // Restaura os limites amplos padrão caso uma faixa seja gravada por engano.
-  if (strcmp(cmd, "LIMRESET") == 0) {
+  if (strcmp_P(cmd, PSTR("LIMRESET")) == 0) {
     minB = 0; maxB = 180;
     minBraco = 55; maxBraco = 180;
     minCotovelo = 55; maxCotovelo = 180;
@@ -770,28 +877,28 @@ void processarComando(const char* cmd) {
   }
 
   // Movimento conjunto deve vir antes do despacho por eixo (ARM começa com A).
-  if (strncmp(cmd, "ARM:", 4) == 0) {
+  if (strncmp_P(cmd, PSTR("ARM:"), 4) == 0) {
     int bracoVal = 0, cotoveloVal = 0;
-    if (sscanf(cmd + 4, "%d:%d", &bracoVal, &cotoveloVal) == 2) {
+    if (sscanf_P(cmd + 4, PSTR("%d:%d"), &bracoVal, &cotoveloVal) == 2) {
       moverBracoJunto(bracoVal, cotoveloVal);
     } else Serial.println(F("[ERRO] Use ARM:<braco>:<cotovelo>"));
     return;
   }
 
   // Salva os limites mecânicos escolhidos no calibrador web.
-  if (strncmp(cmd, "LIM:", 4) == 0) {
+  if (strncmp_P(cmd, PSTR("LIM:"), 4) == 0) {
     char eixoLim = 0;
     int novoMin = 0, novoMax = 0;
-    if (sscanf(cmd + 4, "%c:%d:%d", &eixoLim, &novoMin, &novoMax) == 3) {
+    if (sscanf_P(cmd + 4, PSTR("%c:%d:%d"), &eixoLim, &novoMin, &novoMax) == 3) {
       if (!atualizarLimite(eixoLim, novoMin, novoMax)) Serial.println(F("[ERRO] Faixa de limite invalida."));
     } else Serial.println(F("[ERRO] Use LIM:<eixo>:<min>:<max>"));
     return;
   }
 
   // Salva ambos os limites da garra antes do despacho por eixo.
-  if (strncmp(cmd, "GCALIB:", 7) == 0) {
+  if (strncmp_P(cmd, PSTR("GCALIB:"), 7) == 0) {
     int ab = 0, fe = 0;
-    if (sscanf(cmd + 7, "%d:%d", &ab, &fe) == 2) salvarGarraCalib(ab, fe);
+    if (sscanf_P(cmd + 7, PSTR("%d:%d"), &ab, &fe) == 2) salvarGarraCalib(ab, fe);
     else Serial.println(F("[ERRO] Use GCALIB:<aberta>:<fechada>"));
     return;
   }
@@ -800,11 +907,11 @@ void processarComando(const char* cmd) {
 
   // 1. BASE (Pino 10)
   if (eixo == 'B') {
-    if (strcmp(cmd, "B:FREE") == 0) {
+    if (strcmp_P(cmd, PSTR("B:FREE")) == 0) {
       if (sBase.attached()) sBase.detach();
       Serial.println(F("[MOTOR] Base (10) DESLIGADA."));
     }
-    else if (strcmp(cmd, "B:HOLD") == 0) {
+    else if (strcmp_P(cmd, PSTR("B:HOLD")) == 0) {
       if (!sBase.attached()) { sBase.attach(PINO_BASE); sBase.write(angB); }
       Serial.println(F("[MOTOR] Base (10) ATIVA."));
     }
@@ -817,15 +924,15 @@ void processarComando(const char* cmd) {
 
   // 2. BRAÇO PRINCIPAL (Pino 11) - aceita 'A' (Arm) ou 'D'
   else if (eixo == 'A' || eixo == 'D') {
-    if (strcmp(cmd, "A:FREE") == 0 || strcmp(cmd, "D:FREE") == 0) {
+    if (strcmp_P(cmd, PSTR("A:FREE")) == 0 || strcmp_P(cmd, PSTR("D:FREE")) == 0) {
       if (sBraco.attached()) sBraco.detach();
       Serial.println(F("[MOTOR] Braco (11) DESLIGADO."));
     }
-    else if (strcmp(cmd, "A:HOLD") == 0 || strcmp(cmd, "D:HOLD") == 0) {
+    else if (strcmp_P(cmd, PSTR("A:HOLD")) == 0 || strcmp_P(cmd, PSTR("D:HOLD")) == 0) {
       if (!sBraco.attached()) { sBraco.attach(PINO_BRACO); sBraco.write(angBraco); }
       Serial.println(F("[MOTOR] Braco (11) ATIVO."));
     }
-    else if (strcmp(cmd, "A:TEST") == 0 || strcmp(cmd, "D:TEST") == 0) {
+    else if (strcmp_P(cmd, PSTR("A:TEST")) == 0 || strcmp_P(cmd, PSTR("D:TEST")) == 0) {
       diagnosticarPino11();
     }
     else if (cmd[1] >= '0' && cmd[1] <= '9') {
@@ -837,11 +944,11 @@ void processarComando(const char* cmd) {
 
   // 3. COTOVELO COMPLEMENTAR (Pino 6) - aceita 'C' (Cotovelo) ou 'E'
   else if (eixo == 'C' || eixo == 'E') {
-    if (strcmp(cmd, "C:FREE") == 0 || strcmp(cmd, "E:FREE") == 0) {
+    if (strcmp_P(cmd, PSTR("C:FREE")) == 0 || strcmp_P(cmd, PSTR("E:FREE")) == 0) {
       if (sCotovelo.attached()) sCotovelo.detach();
       Serial.println(F("[MOTOR] Cotovelo (6) DESLIGADO (Seguro)."));
     }
-    else if (strcmp(cmd, "C:HOLD") == 0 || strcmp(cmd, "E:HOLD") == 0) {
+    else if (strcmp_P(cmd, PSTR("C:HOLD")) == 0 || strcmp_P(cmd, PSTR("E:HOLD")) == 0) {
       if (!sCotovelo.attached()) { sCotovelo.attach(PINO_COTOVELO); sCotovelo.write(angCotovelo); }
       Serial.println(F("[MOTOR] Cotovelo (6) ATIVO."));
     }
@@ -854,20 +961,20 @@ void processarComando(const char* cmd) {
 
   // 5. GARRA (Pino 3)
   else if (eixo == 'G') {
-    if (strcmp(cmd, "G:FREE") == 0 || strcmp(cmd, "G:OFF") == 0) {
+    if (strcmp_P(cmd, PSTR("G:FREE")) == 0 || strcmp_P(cmd, PSTR("G:OFF")) == 0) {
       desenergizarGarra();
     }
-    else if (strcmp(cmd, "G:HOLD") == 0 || strcmp(cmd, "G:ON") == 0) {
+    else if (strcmp_P(cmd, PSTR("G:HOLD")) == 0 || strcmp_P(cmd, PSTR("G:ON")) == 0) {
       energizarGarra();
     }
-    else if (strcmp(cmd, "G:TEST") == 0 || strcmp(cmd, "TEST:G") == 0) {
+    else if (strcmp_P(cmd, PSTR("G:TEST")) == 0 || strcmp_P(cmd, PSTR("TEST:G")) == 0) {
       testarGarraLento();
     }
-    else if (strcmp(cmd, "G:OPEN") == 0) {
+    else if (strcmp_P(cmd, PSTR("G:OPEN")) == 0) {
       definirDestinoGarra(angGarraAberta, true);
       Serial.print(F("[GARRA] Abrindo suavemente a partir de ")); Serial.print(angG); Serial.println(F("°"));
     }
-    else if (strcmp(cmd, "G:CLOSE") == 0) {
+    else if (strcmp_P(cmd, PSTR("G:CLOSE")) == 0) {
       definirDestinoGarra(angGarraFechada, true);
       Serial.print(F("[GARRA] Fechando suavemente a partir de ")); Serial.print(angG); Serial.println(F("°"));
     }
@@ -877,55 +984,56 @@ void processarComando(const char* cmd) {
   }
 
   // 7. CONTROLE GERAL DE ENERGIA DOS SERVOS
-  else if (strcmp(cmd, "FREE") == 0 || strcmp(cmd, "DETACH") == 0) {
+  else if (strcmp_P(cmd, PSTR("FREE")) == 0 || strcmp_P(cmd, PSTR("DETACH")) == 0) {
     desenergizarServos();
   }
-  else if (strcmp(cmd, "HOLD") == 0 || strcmp(cmd, "ATTACH") == 0) {
+  else if (strcmp_P(cmd, PSTR("HOLD")) == 0 || strcmp_P(cmd, PSTR("ATTACH")) == 0) {
     energizarServos();
   }
 
   // 8. MEMÓRIA EEPROM
-  else if (strcmp(cmd, "Y") == 0 || strcmp(cmd, "SALVAR:ESTOQUE") == 0) {
+  else if (strcmp_P(cmd, PSTR("Y")) == 0 || strcmp_P(cmd, PSTR("SALVAR:ESTOQUE")) == 0) {
     salvarPontoY();
   }
-  else if (strcmp(cmd, "X") == 0 || strcmp(cmd, "SALVAR:ESTEIRA") == 0) {
+  else if (strcmp_P(cmd, PSTR("X")) == 0 || strcmp_P(cmd, PSTR("SALVAR:ESTEIRA")) == 0) {
     salvarPontoX();
   }
-  else if (strcmp(cmd, "TESTY") == 0) {
+  else if (strcmp_P(cmd, PSTR("TESTY")) == 0) {
     testarPontoSalvo(pontoY, F("ponto de pegar (Y)"));
   }
-  else if (strcmp(cmd, "TESTX") == 0) {
+  else if (strcmp_P(cmd, PSTR("TESTX")) == 0) {
     testarPontoSalvo(pontoX, F("ponto de entregar (X)"));
   }
-  else if (strcmp(cmd, "N") == 0 || strcmp(cmd, "SALVAR:NEUTRO") == 0) {
+  else if (strcmp_P(cmd, PSTR("N")) == 0 || strcmp_P(cmd, PSTR("SALVAR:NEUTRO")) == 0) {
     salvarPontoNeutro();
   }
-  else if (strcmp(cmd, "TESTN") == 0) {
+  else if (strcmp_P(cmd, PSTR("TESTN")) == 0) {
     testarPontoSalvo(pontoNeutro, F("ponto neutro"));
   }
 
   // Inicia o ciclo salvo; os testes de varredura continuam bloqueados.
-  else if (strcmp(cmd, "RUN") == 0 || strcmp(cmd, "LOAD") == 0) {
+  else if (strcmp_P(cmd, PSTR("RUN")) == 0 || strcmp_P(cmd, PSTR("LOAD")) == 0) {
     executarCicloXY();
   }
-  else if (strcmp(cmd, "STOP") == 0) {
+  else if (strcmp_P(cmd, PSTR("STOP")) == 0) {
     abortarCiclo = true;
     desenergizarServos();
     Serial.println(F("[CICLO] Parado; servos soltos."));
   }
-  else if (strcmp(cmd, "TESTALL") == 0 || strcmp(cmd, "AUTOTEST") == 0 || strcmp(cmd, "T") == 0 || strcmp(cmd, "TEST:11") == 0 || strcmp(cmd, "DIAG:11") == 0) {
+  else if (strcmp_P(cmd, PSTR("TESTALL")) == 0 || strcmp_P(cmd, PSTR("AUTOTEST")) == 0 || strcmp_P(cmd, PSTR("T")) == 0 || strcmp_P(cmd, PSTR("TEST:11")) == 0 || strcmp_P(cmd, PSTR("DIAG:11")) == 0) {
     Serial.println(F("[BLOQUEADO] Varreduras automaticas desativadas."));
   }
-  else if (strcmp(cmd, "H") == 0 || strcmp(cmd, "HOME") == 0) {
+  else if (strcmp_P(cmd, PSTR("H")) == 0 || strcmp_P(cmd, PSTR("HOME")) == 0) {
     Serial.println(F("[ARDUINO] Indo para Home neutra..."));
     moverSuave(pontoNeutro.base, pontoNeutro.braco, pontoNeutro.cotovelo, pontoNeutro.garra, velocidadeMs);
     Serial.println(F("[ARDUINO] Na Home."));
   }
-  else if (strcmp(cmd, "?") == 0 || strcmp(cmd, "STATUS") == 0) {
+  else if (strcmp_P(cmd, PSTR("?")) == 0 || strcmp_P(cmd, PSTR("STATUS")) == 0) {
     Serial.print(F("[STATUS] B:")); Serial.print(angB);
     Serial.print(F(" Braco(11):")); Serial.print(angBraco);
     Serial.print(F(" Cotovelo(6):")); Serial.print(angCotovelo);
     Serial.print(F(" Garra(3):")); Serial.print(angG);
+    Serial.print(F(" PoseRef:")); Serial.print(poseReferenciaConfirmada ? F("SIM") : F("NAO"));
     Serial.print(F(" | GarraAtiva: ")); Serial.println(garraAtiva ? F("SIM") : F("NAO"));
     imprimirPontos();
   }
