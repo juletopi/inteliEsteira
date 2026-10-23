@@ -32,6 +32,28 @@ Protocolo: `CMD:<ciclo>:<comando>` → `ACK` / `EVT` / `ERR`. O fluxo de um cubo
   Modelo em `data/system_config.example.json`; `EV3_TOKEN` = conteúdo de `ev3/token.txt`.
   `AUTO_OPERATION` arma o fluxo ao iniciar; `AUTO_SYNC_NEUTRAL` confirma o neutro sem clique.
 
+## Caixas e bandeiras
+
+Cada UF com bandeira na bancada vai sempre para a sua caixa (`STATE_DESTINATIONS` em
+`core/classifier.py`). UFs sem bandeira (ex.: DF, MS) usam a caixa menos cheia da região.
+Lados vistos da coleta (garra) olhando para o fim da esteira.
+
+| Destino | Bandeira | Posição | Cubo (ArUco → produto) |
+| --- | --- | --- | --- |
+| R01 | Rondônia (RO) | esquerda, 2ª caixa | 7 → PROD-NORTE-02 |
+| R02 | Amazonas (AM) | esquerda, 1ª caixa | 6 → PROD-NORTE-01 |
+| R03 | Santa Catarina (SC) | fim da esteira | 14 → PROD-SUL |
+| R04 | Paraná (PR) | início da esteira (esteira em ré) | 10 → PROD-SUL-01 |
+| R05 | São Paulo (SP) | direita, 1ª caixa | 8 → PROD-SUDESTE-01 |
+| R06 | Minas Gerais (MG) | direita, 2ª caixa | 9 → PROD-SUDESTE-02 |
+| R07 | Bahia (BA) | esquerda, 4ª caixa | 5 → PROD-NORDESTE-02 |
+| R08 | Pernambuco (PE) | esquerda, 3ª caixa | 15 → PROD-NORDESTE |
+| R09 | Mato Grosso (MT) | direita, 3ª caixa | 3 → PROD-CENTRO-02 |
+| R10 | Goiás (GO) | direita, 4ª caixa | 2 → PROD-CENTRO-01 |
+
+O catálogo `data/inteliesteira.json` (e os iniciais `data/catalogo-inicial.json` /
+`catalogo-apresentacao-final-v2.json`) mantém exatamente um produto ativo por bandeira.
+
 ## Instalação (uma vez por máquina)
 
 1. Python: `python -m venv .venv` e `.venv\Scripts\pip install -r requirements.txt`.
