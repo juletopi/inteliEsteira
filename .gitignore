@@ -20,6 +20,8 @@ ev3/token.txt
 # local data
 data/*.db
 data/*.db-*
+data/system_config.local.json
+data/mearm-flow-profile.local.json
 # Arquivos de controle/gravacao atomica do cadastro JSON.
 data/*.json.lock
 data/.catalog-*.tmp
@@ -35,6 +37,7 @@ output/firmware-native*/
 output/firmware*-compile.log
 output/test-tmp/
 output/test-*.log
+output/logs/
 output/bancada*.db
 output/bancada*.db-*
 output/bancada*.json
@@ -43,3 +46,6 @@ output/antes-json-automatico-*.db
 # OS
 .vscode/
 .idea/
+# Scripts e logs avulsos de bancada (ex.: rede Bluetooth do EV3).
+output/*.ps1
+output/*.log

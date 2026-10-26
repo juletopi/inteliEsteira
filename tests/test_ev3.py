@@ -469,8 +469,9 @@ class EV3APITests(TCPFixture, unittest.TestCase):
                 self.assertEqual(response.get_json()["destino"], destination)
                 self.assertEqual(self.motion.codes[-1], DESTINATION_TO_CODE[destination])
         arduino_commands = [parse_message(frame).payload for frame in app.extensions["arduino"].command_log]
-        self.assertTrue(all(command.startswith("GARRA:") or command == "SISTEMA:PING" for command in arduino_commands))
-        self.assertEqual(arduino_commands.count("GARRA:POSICIONAR:E01"), 10)
+        self.assertTrue(all(command.startswith("GARRA:") or command in {"SISTEMA:PING", "SISTEMA:STATUS"}
+                            for command in arduino_commands))
+        self.assertEqual(sum(command.startswith("GARRA:PASSO:E:1:") for command in arduino_commands), 10)
         status = client.get("/api/status").get_json()
         self.assertTrue(status["arduino"])
         self.assertTrue(status["esteira_conectada"])

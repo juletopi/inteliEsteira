@@ -14,11 +14,14 @@ def create_app(test_config=None):
     app.config.from_object("config")
     if test_config:
         app.config.update(test_config)
+    _load_local_system_config(app, overrides=test_config)
     if app.config.get("TESTING"):
         for name, value in (("CAMERA_MODE", "mock"), ("HARDWARE_MODE", "mock"), ("CONVEYOR_MODE", "arduino"),
                             ("BOOTSTRAP_CATALOG", False), ("REQUIRE_PHYSICAL_ARRIVAL", False)):
             if name not in (test_config or {}):
                 app.config[name] = value
+        if "GRIPPER_FLOW_PROFILE_LOCAL_PATH" not in (test_config or {}):
+            app.config["GRIPPER_FLOW_PROFILE_LOCAL_PATH"] = Path(app.config["DATABASE_PATH"]).with_name("mearm-flow-profile.local.json")
 
     from storage.automatic_catalog import CatalogPersistenceError
 
@@ -35,15 +38,62 @@ def create_app(test_config=None):
     app.register_blueprint(api_bp)
 
     if app.config.get("AUTO_OPERATION", True) and not app.config.get("TESTING"):
-        try:
-            app.extensions["workflow"].start()
-        except (ValueError, RuntimeError) as exc:
-            app.logger.warning("Operacao automatica aguarda recuperacao: %s", exc)
+        _start_automatic_operation(app)
 
     if not app.config.get("TESTING"):
         app.extensions["camera_monitor"].start()
 
     return app
+
+
+def _start_automatic_operation(app, *, wait_lease=60.0, retry_interval=2.0):
+    """Arma o fluxo no boot; apos encerramento abrupto, espera a posse anterior expirar."""
+    from threading import Thread
+    from time import monotonic, sleep
+
+    workflow = app.extensions["workflow"]
+
+    def try_start():
+        """True: armado; False: posse anterior ainda valida; excecao: precisa do operador."""
+        try:
+            workflow.start(at_boot=True)
+            return True
+        except (ValueError, RuntimeError) as exc:
+            if workflow.repository.runtime()["ativo"]:
+                return False
+            app.logger.warning("Operacao automatica aguarda recuperacao: %s", exc)
+            return True
+
+    def retry_until_lease_expires():
+        deadline = monotonic() + wait_lease
+        while monotonic() < deadline:
+            sleep(retry_interval)
+            if try_start():
+                return
+        app.logger.warning("Operacao automatica aguarda recuperacao: outro processo mantem a operacao.")
+
+    # Primeira tentativa sincrona: o fluxo precisa ter a posse antes do monitor da
+    # camera iniciar, senao o monitor abre a camera segurando a trava do controlador.
+    if not try_start():
+        Thread(target=retry_until_lease_expires, name="inteliesteira-boot", daemon=True).start()
+
+
+def _load_local_system_config(app, overrides=None):
+    """Aplica escolhas da tela de Conexao, sem versionar credenciais locais."""
+    path = Path(app.config.get("LOCAL_SYSTEM_CONFIG_PATH", Path(app.root_path).parent / "data" / "system_config.local.json"))
+    app.extensions["local_system_config_path"] = path
+    if app.config.get("TESTING"):
+        return
+    try:
+        values = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    allowed = {"HARDWARE_MODE", "ARDUINO_PORT", "ARDUINO_BAUDRATE", "CONVEYOR_MODE",
+               "EV3_HOST", "EV3_PORT", "EV3_TOKEN", "CAMERA_MODE", "CAMERA_INDEX",
+               "GRIPPER_PROFILE_CALIBRATED", "AUTO_OPERATION", "AUTO_SYNC_NEUTRAL"}
+    for key, value in values.items():
+        if key in allowed and (overrides is None or key not in overrides):
+            app.config[key] = value
 
 
 def _configure_controller(app):
@@ -61,6 +111,7 @@ def _configure_controller(app):
     from storage.catalog import import_catalog
     from storage.automatic_catalog import AutomaticCatalog
     from storage.database import Database
+    from storage.gripper_profile import GripperProfileStore
     from storage.repositories import CycleRepository, ProductRepository
     from vision.mock import MockArucoCamera
     from vision.aruco import ArucoCamera
@@ -82,6 +133,11 @@ def _configure_controller(app):
         app.extensions["catalog_store"] = store
     products = ProductRepository(database)
     cycles = CycleRepository(database)
+    project_root = Path(app.root_path).parent
+    profile_path = app.config.get("GRIPPER_FLOW_PROFILE_PATH", project_root / "data" / "mearm-flow-profile.json")
+    local_profile_path = app.config.get("GRIPPER_FLOW_PROFILE_LOCAL_PATH", project_root / "data" / "mearm-flow-profile.local.json")
+    profile_store = GripperProfileStore(profile_path, local_profile_path)
+    app.extensions["gripper_profile_store"] = profile_store
     hardware_mode = str(app.config.get("HARDWARE_MODE", "mock")).strip().lower()
     if hardware_mode == "mock":
         arduino = MockArduino()
@@ -185,6 +241,7 @@ def _configure_controller(app):
         command_retries=app.config.get("COMMAND_RETRIES", 1),
         gripper_timeout=app.config.get("GRIPPER_COMPLETION_TIMEOUT", 30.0),
         require_physical_arrival=app.config.get("REQUIRE_PHYSICAL_ARRIVAL", False),
+        gripper_profile_provider=profile_store.load,
     )
 
     app.extensions["system_controller"] = controller
@@ -196,7 +253,9 @@ def _configure_controller(app):
     app.extensions["cycle_repository"] = cycles
     workflow = Workflow(controller, QueueRepository(database),
                         presence_distance=app.config.get("PRESENCE_DISTANCE_CM", 10),
-                        presence_stable_ms=app.config.get("PRESENCE_STABLE_MS", 3000))
+                        presence_stable_ms=app.config.get("PRESENCE_STABLE_MS", 3000),
+                        profile_provider=profile_store.load,
+                        auto_sync_neutral=app.config.get("AUTO_SYNC_NEUTRAL", False))
     app.extensions["workflow"] = workflow
     atexit.register(workflow.shutdown)
     from app.services.camera_monitor import CameraMonitor

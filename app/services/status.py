@@ -25,12 +25,6 @@ def get_system_status():
     )
     camera_mode = getattr(controller.camera, "mode", "desconhecido")
     camera_connected = controller.camera.is_connected()
-    if (
-        camera_mode == "opencv"
-        and not camera_connected
-        and hasattr(controller.camera, "connect")
-    ):
-        camera_connected = controller.camera.connect()
     snapshot["camera"] = camera_connected
     snapshot["camera_modo"] = camera_mode
     snapshot["camera_indice"] = getattr(controller.camera, "camera_index", None)
@@ -44,6 +38,7 @@ def get_system_status():
     snapshot["identificacao"] = current_app.extensions["camera_monitor"].snapshot()
     snapshot["producao"] = current_app.extensions["cycle_repository"].list_recent(30)
     snapshot["fila"] = current_app.extensions["workflow"].snapshot()
+    snapshot["calibracao_ativa"] = bool(current_app.extensions.get("calibration_session"))
     snapshot["area_coleta"] = controller.gripper.pickup_zone
     snapshot["perfil_garra_calibrado"] = controller.gripper.calibrated
     snapshot["arduino_ping_em"] = arduino.telemetry.last_ping_at if hasattr(arduino, "telemetry") else None

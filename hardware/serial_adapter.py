@@ -137,6 +137,7 @@ class SerialArduino(Arduino):
 
         with self._lifecycle_lock:
             self._reader = None
+            self.presence.reset()
 
     def is_connected(self) -> bool:
         with self._lifecycle_lock:
@@ -283,7 +284,10 @@ class SerialArduino(Arduino):
             if not text or len(text) > MAX_SERIAL_FRAME_LENGTH:
                 self.invalid_frames.append(text[:MAX_SERIAL_FRAME_LENGTH])
                 continue
+            if self.presence.ingest_distance(text):
+                continue
             if self.presence.ingest(text):
+                self.telemetry.record("RX", ProtocolMessage("EVT", "PRESENCA", text))
                 continue
             try:
                 message = parse_message(text)
@@ -318,6 +322,7 @@ class SerialArduino(Arduino):
         self._reader_error = str(exc)
         self._stop_reader.set()
         self._close_serial()
+        self.presence.reset()
         with self._condition:
             self._condition.notify_all()
 

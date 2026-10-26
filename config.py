@@ -34,9 +34,14 @@ BOOTSTRAP_CATALOG_PATH = PROJECT_ROOT / "data" / "catalogo-inicial.json"
 CATALOG_PATH = os.getenv("CATALOG_PATH", "").strip() or None
 CAMERA_PICKUP_ROI = tuple(float(value) for value in os.getenv("CAMERA_PICKUP_ROI", "0,0,1,1").split(","))
 GRIPPER_PROFILE_CALIBRATED = os.getenv("GRIPPER_PROFILE_CALIBRATED", "0").strip().lower() in {"1", "true", "sim"}
+GRIPPER_FLOW_PROFILE_PATH = Path(os.getenv("GRIPPER_FLOW_PROFILE_PATH", PROJECT_ROOT / "data" / "mearm-flow-profile.json"))
+GRIPPER_FLOW_PROFILE_LOCAL_PATH = Path(os.getenv("GRIPPER_FLOW_PROFILE_LOCAL_PATH", PROJECT_ROOT / "data" / "mearm-flow-profile.local.json"))
 GRIPPER_COMPLETION_TIMEOUT = float(os.getenv("GRIPPER_COMPLETION_TIMEOUT", "30"))
 REQUIRE_PHYSICAL_ARRIVAL = os.getenv("REQUIRE_PHYSICAL_ARRIVAL", "0").strip().lower() in {"1", "true", "sim"}
 AUTO_OPERATION = os.getenv("AUTO_OPERATION", "1").strip().lower() in {"1", "true", "sim"}
+# Confirma o neutro salvo sem clique: o braco deve ficar no neutro entre ciclos;
+# fora dele, salta para o neutro ao energizar no primeiro movimento.
+AUTO_SYNC_NEUTRAL = os.getenv("AUTO_SYNC_NEUTRAL", "0").strip().lower() in {"1", "true", "sim"}
 PRESENCE_DISTANCE_CM = int(os.getenv("PRESENCE_DISTANCE_CM", "10"))
 PRESENCE_STABLE_MS = int(os.getenv("PRESENCE_STABLE_MS", "3000"))
 ARRIVAL_SENSOR_MODE = os.getenv("ARRIVAL_SENSOR_MODE", "conveyor").strip().lower()

@@ -1,0 +1,127 @@
+{% extends "layout.html" %}
+
+{% block title %}InteliEsteira | Calibração da garra{% endblock %}
+
+{% block head %}
+<style>
+    .calibration-shell { width: min(1500px, calc(100% - 28px)); margin: 26px auto 40px; }
+    .calibration-card { padding: 22px; border-radius: 12px; background: var(--surface); box-shadow: 0 12px 32px rgba(23,37,43,.06); }
+    .calibration-frame { display: none; width: 100%; height: min(1700px, 84vh); min-height: 780px; border: 1px solid var(--line); border-radius: 10px; background: #f4f6f3; }
+    .calibration-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .calibration-banner p { max-width: 750px; margin: 5px 0 0; color: var(--muted); font-size: .86rem; }
+    .calibration-state { color: var(--muted); font-size: .8rem; }
+    @media (max-width: 700px) { .calibration-shell { width: calc(100% - 12px); } .calibration-card { padding: 12px; } .calibration-banner { align-items: flex-start; flex-direction: column; } .calibration-frame { min-height: 760px; height: 84vh; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="calibration-shell">
+    <section class="calibration-card">
+        <div class="calibration-banner">
+            <div>
+                <div class="small-label">Módulo de hardware</div>
+                <h1 class="h4 fw-bold mb-0">Calibração da garra MeArm</h1>
+                <p>Antes de sair, valide no calibrador os pontos Y/X/neutro, os limites e a garra para a EEPROM. Depois, salve o fluxo atual para o Dashboard.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span id="calibration-state" class="calibration-state" role="status">Controle ainda não assumido</span>
+                <button id="take-control" class="btn btn-primary"><i class="bi bi-usb-plug"></i> Assumir controle</button>
+                <button id="release-control" class="btn btn-outline-secondary" hidden><i class="bi bi-save"></i> Salvar fluxo e encerrar</button>
+            </div>
+        </div>
+        <div id="calibration-error" class="alert alert-danger py-2" hidden></div>
+        <p class="alert alert-info py-2">São duas confirmações distintas: “Validar para operação coletiva” grava o estado de calibração da EEPROM; “Salvar fluxo e encerrar” transfere a ordem, os ângulos, as pausas e a suavidade atuais para o Dashboard. O firmware confirma cada movimento antes do próximo passo.</p>
+        <iframe id="calibrator" class="calibration-frame" title="Calibrador MeArm" allow="serial" src="{{ url_for('static', filename='mearm_calibrador.html', baud=config['ARDUINO_BAUDRATE']) }}"></iframe>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function calibrationRequest(url, options = {}) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.erro?.mensagem || `Falha HTTP ${response.status}.`);
+        return data;
+    }
+    const frame = document.getElementById('calibrator');
+    const state = document.getElementById('calibration-state');
+    const errorBox = document.getElementById('calibration-error');
+    document.getElementById('take-control').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        errorBox.hidden = true;
+        try {
+            await calibrationRequest("{{ url_for('api.start_calibration_session') }}", { method: 'POST' });
+            frame.style.display = 'block';
+            button.hidden = true;
+            document.getElementById('release-control').hidden = false;
+            state.textContent = 'Sessão ativa · conecte o Arduino pelo botão USB do calibrador';
+        } catch (error) {
+            errorBox.textContent = error.message;
+            errorBox.hidden = false;
+        } finally { button.disabled = false; }
+    });
+    function releaseCalibratorPort() {
+        return new Promise((resolve, reject) => {
+            const finish = (error) => {
+                clearTimeout(timer);
+                window.removeEventListener('message', onMessage);
+                error ? reject(error) : resolve();
+            };
+            const onMessage = (event) => {
+                if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
+                if (event.data?.type === 'calibration-session-released') finish();
+                if (event.data?.type === 'calibration-session-release-failed') finish(new Error(event.data.message));
+            };
+            const timer = setTimeout(() => finish(new Error('O calibrador não confirmou a liberação da porta USB. Confira a conexão e tente novamente.')), 8000);
+            window.addEventListener('message', onMessage);
+            frame.contentWindow.postMessage({ type: 'release-calibration-session' }, window.location.origin);
+        });
+    }
+    function exportCalibratorProfile() {
+        return new Promise((resolve, reject) => {
+            const requestId = `profile-${Date.now()}`;
+            const finish = (error, profile) => {
+                clearTimeout(timer);
+                window.removeEventListener('message', onMessage);
+                error ? reject(error) : resolve(profile);
+            };
+            const onMessage = (event) => {
+                if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
+                if (event.data?.type !== 'calibration-profile-exported' || event.data.requestId !== requestId) return;
+                finish(null, event.data.profile);
+            };
+            const timer = setTimeout(() => finish(new Error('O calibrador não respondeu com os passos atuais.')), 5000);
+            window.addEventListener('message', onMessage);
+            frame.contentWindow.postMessage({ type: 'export-calibration-profile', requestId }, window.location.origin);
+        });
+    }
+    document.getElementById('release-control').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        errorBox.hidden = true;
+        state.textContent = 'Salvando o perfil e liberando a porta USB…';
+        try {
+            const profile = await exportCalibratorProfile();
+            const saved = await calibrationRequest("{{ url_for('api.save_calibration_profile') }}", {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profile)
+            });
+            await releaseCalibratorPort();
+            frame.style.display = 'none';
+            document.getElementById('take-control').hidden = false;
+            button.hidden = true;
+            state.textContent = `Perfil ${saved.perfil.version} salvo · sessão encerrada · confirme o neutro no Dashboard`;
+        } catch (error) {
+            state.textContent = 'Liberação pendente';
+            errorBox.textContent = error.message;
+            errorBox.hidden = false;
+        } finally { button.disabled = false; }
+    });
+    window.addEventListener('beforeunload', () => {
+        if (!document.getElementById('release-control').hidden) {
+            navigator.sendBeacon("{{ url_for('api.release_calibration_session') }}", new Blob([], { type: 'application/json' }));
+        }
+    });
+</script>
+{% endblock %}

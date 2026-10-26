@@ -22,3 +22,8 @@ def products():
 @pages_bp.get("/conexao")
 def connection():
     return render_template("connection.html")
+
+
+@pages_bp.get("/calibracao")
+def calibration():
+    return render_template("calibration.html")

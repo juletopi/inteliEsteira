@@ -65,6 +65,24 @@ MACROREGION_DESTINATIONS = {
 }
 
 
+# Bandeiras fisicas da bancada (fotos de 22/10/2026) cruzadas com a calibracao do
+# EV3 em ev3/calibration.py: motor C escolhe o lado, voltas do motor A a distancia.
+# Cada UF com bandeira propria vai sempre para a sua caixa; as demais UFs seguem a
+# regra de menor ocupacao entre as duas saidas da macrorregiao.
+STATE_DESTINATIONS = {
+    "RO": "R01",  # Norte 1: esquerda, 2a caixa a partir da coleta
+    "AM": "R02",  # Norte 2: esquerda, 1a caixa
+    "SC": "R03",  # Sul 1: fim da esteira
+    "PR": "R04",  # Sul 2: inicio da esteira (esteira em re)
+    "SP": "R05",  # Sudeste 1: direita, 1a caixa
+    "MG": "R06",  # Sudeste 2: direita, 2a caixa
+    "BA": "R07",  # Nordeste 1: esquerda, 4a caixa
+    "PE": "R08",  # Nordeste 2: esquerda, 3a caixa
+    "MT": "R09",  # Centro-Oeste 1: direita, 3a caixa
+    "GO": "R10",  # Centro-Oeste 2: direita, 4a caixa
+}
+
+
 PRODUCT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 MAX_QR_CODE_LENGTH = 512
 
@@ -218,7 +236,7 @@ def determine_destination(
     occupancy: Mapping[str, int] | None = None,
     unavailable: Collection[str] | None = None,
 ) -> RouteDecision:
-    """Escolhe a saida disponivel com menor ocupacao para o produto."""
+    """Escolhe a caixa da bandeira da UF ou, sem bandeira, a saida com menor ocupacao."""
 
     if not isinstance(product, Product):
         raise TypeError("product deve ser uma instancia de Product.")
@@ -261,10 +279,14 @@ def determine_destination(
             )
         normalized_occupancy[normalized_destination] = quantity
 
-    destination = min(
-        available,
-        key=lambda candidate: (normalized_occupancy.get(candidate, 0), candidates.index(candidate)),
-    )
+    fixed = STATE_DESTINATIONS.get(product.state)
+    if fixed in available:
+        destination = fixed
+    else:
+        destination = min(
+            available,
+            key=lambda candidate: (normalized_occupancy.get(candidate, 0), candidates.index(candidate)),
+        )
 
     return RouteDecision(
         product=product,

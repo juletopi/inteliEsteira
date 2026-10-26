@@ -16,6 +16,10 @@ using byte = uint8_t;
 class __FlashStringHelper;
 #define F(s) reinterpret_cast<const __FlashStringHelper *>(s)
 #define pgm_read_byte(p) (*(p))
+#define PSTR(s) (s)
+#define strcmp_P strcmp
+#define strncmp_P strncmp
+#define sscanf_P sscanf
 constexpr int LOW = 0, HIGH = 1, INPUT = 0, OUTPUT = 1, INPUT_PULLUP = 2, NUM_DIGITAL_PINS = 20;
 inline uint32_t hostMillis = 0;
 inline std::function<void()> hostOnDelay;

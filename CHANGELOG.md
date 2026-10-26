@@ -2,6 +2,33 @@
 
 <details open>
 <summary>
+  <h3 style="display: inline-block;">[v0.3.0] - 21/10/2026</h3>
+</summary>
+
+<h3>Adicionado</h3>
+
+- Operação coletiva automática validada na bancada: HC-SR04 → MeArm → ArUco → EV3, ciclos de ~20 s
+- `SISTEMA:LIBERAR` (firmware, API e botão **Soltar servos**) para refazer a referência do neutro
+- Confirmação automática do neutro (`AUTO_SYNC_NEUTRAL`) e rearme do fluxo no boot do backend
+- Reconexão automática quando um controlador cai sem cubo em andamento
+- HC-SR04 com mediana, histerese de 2 cm, distância ao vivo no Dashboard e `PRESENCA:LEITURA`
+- Scripts `instalar-ev3.ps1` (ponte + serviço systemd + chave SSH), `gravar-firmware.ps1`,
+  `iniciar-backend.ps1` e `instalar-inicializacao.ps1`
+- Firmware compilado versionado em `arduino/firmware/` e guia `docs/operacao-automatica.md`
+
+<h3>Corrigido</h3>
+
+- Fundo da bancada (9 cm) dentro do limite do sensor (10 cm) prendia o estado em "cubo detectado"; limite passa a 5 cm
+- RAM do firmware de 1535 para ~790 bytes estáticos (literais na flash, buffers menores)
+- Um único PING atrasado encerrava o fluxo (`HEARTBEAT_FAILED`)
+- Console do Windows em seleção congelava o backend; log passa a `output/logs/backend.log`
+- Boot após encerramento abrupto não rearmava o fluxo enquanto a posse anterior valia
+- Simulador serial não respondia `SISTEMA:STATUS` repetido; testes atualizados para o fluxo por perfil
+
+</details>
+
+<details open>
+<summary>
   <h3 style="display: inline-block;">[v0.2.0] - 17/09/2026</h3>
 </summary>
 

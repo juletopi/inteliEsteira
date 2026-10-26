@@ -38,7 +38,8 @@
       "produto_id": "PROD-NORDESTE-01",
       "uf": "CE",
       "ativo": false,
-      "aruco_id": 4
+      "aruco_id": 4,
+      "excluido": true
     },
     {
       "produto_id": "PROD-NORDESTE-02",
@@ -93,13 +94,15 @@
       "produto_id": "PROD-SUL-03",
       "uf": "RS",
       "ativo": false,
-      "aruco_id": 12
+      "aruco_id": 12,
+      "excluido": true
     },
     {
       "produto_id": "TESTE-JSON",
       "uf": "AM",
       "ativo": false,
-      "aruco_id": 13
+      "aruco_id": 13,
+      "excluido": true
     }
   ]
 }

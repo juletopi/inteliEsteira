@@ -10,7 +10,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = ("unvalidated", "cycle", "retry", "stop", "reset_moving", "watchdog", "timeout",
              "order", "invalidate", "corrupt", "persist", "presence", "manual", "overflow", "missing_sensor",
-             "sensor_blocked", "sensor_arrival", "early_sensor")
+             "sensor_blocked", "sensor_arrival", "early_sensor", "profile", "release", "hysteresis")
 
 
 def main():
