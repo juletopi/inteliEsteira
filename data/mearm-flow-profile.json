@@ -9,8 +9,8 @@
   ],
   "delivery": [
     {"name": "chega perto altura", "B": 90, "A": 114, "C": 118, "G": 101, "pause_ms": 300},
-    {"name": "Deixa", "B": 90, "A": 138, "C": 112, "G": 101, "pause_ms": 300},
-    {"name": "abre", "B": 90, "A": 138, "C": 112, "G": 141, "pause_ms": 300},
+    {"name": "Deixa", "B": 90, "A": 140, "C": 112, "G": 101, "pause_ms": 300},
+    {"name": "abre", "B": 90, "A": 140, "C": 112, "G": 141, "pause_ms": 300},
     {"name": "foge", "B": 90, "A": 94, "C": 120, "G": 123, "pause_ms": 300}
   ],
   "neutral": {"B": 90, "A": 94, "C": 120, "G": 123},
