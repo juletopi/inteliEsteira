@@ -1,0 +1,2 @@
+# InteliEsteira: o PC desliga o EV3 com seguranca (scripts/desligar-ev3.ps1).
+robot ALL=(root) NOPASSWD: /bin/systemctl poweroff

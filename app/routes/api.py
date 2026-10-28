@@ -6,6 +6,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, request, send_file
 
 from app.services.status import get_system_status
+from app.services.region_progress import get_region_progress
 from core.classifier import (
     ClassificationError,
     DestinationUnavailableError,
@@ -40,6 +41,16 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 @api_bp.get("/status")
 def status():
     return jsonify(get_system_status())
+
+
+@api_bp.post("/region-progress/new-round")
+def start_region_round():
+    flow = current_app.extensions["workflow"].snapshot().get("fluxo", {})
+    if flow.get("ciclo_id"):
+        return _error_response("CYCLE_IN_PROGRESS", "Aguarde a entrega atual terminar antes de iniciar outra rodada.", 409)
+    repository = current_app.extensions["cycle_repository"]
+    repository.start_new_region_round()
+    return jsonify({"ok": True, "etapas_regioes": get_region_progress(repository)})
 
 
 @api_bp.post("/route")
@@ -137,9 +148,12 @@ def process_cycle():
 
 @api_bp.get("/cycles")
 def list_cycles():
-    limit = request.args.get("limit", default=100, type=int) or 100
-    cycles = current_app.extensions["cycle_repository"].list_recent(limit)
-    return jsonify({"ok": True, "ciclos": cycles})
+    limit = max(1, min(request.args.get("limit", default=100, type=int) or 100, 500))
+    offset = max(0, request.args.get("offset", default=0, type=int) or 0)
+    repository = current_app.extensions["cycle_repository"]
+    cycles = repository.list_recent(limit, offset)
+    return jsonify({"ok": True, "ciclos": cycles, "total": repository.count_all(),
+                    "limit": limit, "offset": offset})
 
 
 @api_bp.get("/cycles/<cycle_id>")

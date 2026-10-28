@@ -1,5 +1,7 @@
 from flask import current_app
 
+from app.services.region_progress import get_region_progress
+
 
 def get_system_status():
     controller = current_app.extensions["system_controller"]
@@ -37,6 +39,7 @@ def get_system_status():
     ].count_completed()
     snapshot["identificacao"] = current_app.extensions["camera_monitor"].snapshot()
     snapshot["producao"] = current_app.extensions["cycle_repository"].list_recent(30)
+    snapshot["etapas_regioes"] = get_region_progress(current_app.extensions["cycle_repository"])
     snapshot["fila"] = current_app.extensions["workflow"].snapshot()
     snapshot["calibracao_ativa"] = bool(current_app.extensions.get("calibration_session"))
     snapshot["area_coleta"] = controller.gripper.pickup_zone
