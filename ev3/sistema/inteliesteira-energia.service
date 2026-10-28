@@ -1,0 +1,12 @@
+[Unit]
+Description=InteliEsteira - desligamento seguro (bateria baixa ou sem backend)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/inteliesteira-energia
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
