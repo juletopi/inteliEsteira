@@ -178,6 +178,333 @@
         padding: 18px;
     }
 
+    .production-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 0 0 20px;
+        color: var(--muted);
+        font-size: 0.78rem;
+    }
+
+    .queue-pagination {
+        margin: 8px 0 20px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+    }
+
+    .live-journey {
+        padding: 20px 24px 24px;
+        border: 1px solid #d7e7e2;
+        border-radius: 14px;
+        background: linear-gradient(120deg, #ffffff 0%, #f0f8f5 100%);
+        box-shadow: 0 12px 32px rgba(23, 37, 43, 0.05);
+    }
+
+    .live-journey-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+    }
+
+    .live-journey-heading h2 { font-size: 1.22rem; }
+    .live-journey-heading p { margin: 4px 0 0; color: var(--muted); font-size: 0.86rem; }
+    .live-journey-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .live-journey-status { color: #296d63; font-size: 0.88rem; font-weight: 800; }
+    .live-journey-status::before {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-right: 8px;
+        border-radius: 50%;
+        background: currentColor;
+        content: "";
+    }
+    .live-journey-status.is-stopped { color: #9a5c39; }
+
+    .live-journey-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .live-journey-step {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--muted);
+        transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+    .live-journey-step i { flex: none; font-size: 1.4rem; }
+    .live-journey-step strong, .live-journey-step span { display: block; }
+    .live-journey-step strong { color: var(--ink); font-size: 1rem; }
+    .live-journey-step span { font-size: 0.8rem; line-height: 1.3; }
+    .live-journey-step.is-active {
+        border-color: #55a89f;
+        background: #e9f6f2;
+        box-shadow: inset 0 0 0 1px #55a89f;
+        color: #257568;
+    }
+    .live-journey-step.is-complete { border-color: #b8dbc8; color: #348557; }
+
+    #dashboard { padding-top: 22px !important; }
+    #dashboard > .page-heading { margin-bottom: 18px !important; }
+    #dashboard .metric-card { min-height: 112px; padding: 18px 22px; }
+    #dashboard:fullscreen {
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        padding: 24px !important;
+        background: var(--paper);
+    }
+
+    @media (max-width: 920px) {
+        .live-journey-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    .operation-loading {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin: 0 0 17px;
+        padding: 10px 18px;
+        border: 1px solid #cfe6e0;
+        border-radius: 12px;
+        background: linear-gradient(110deg, #f3faf7, #edf7f7);
+    }
+
+    .operation-loading-visual {
+        display: block;
+        width: 250px;
+        max-width: 45%;
+        height: auto;
+        flex: 0 0 auto;
+    }
+
+    .operation-loading-copy strong,
+    .operation-loading-copy span { display: block; }
+    .operation-loading-copy strong { color: #245a5c; font-size: 0.86rem; }
+    .operation-loading-copy span { margin-top: 4px; color: var(--muted); font-size: 0.74rem; }
+
+    .region-progress-panel {
+        margin-bottom: 16px;
+        padding: 28px;
+        border: 1px solid #dfe9e5;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #ffffff 65%, #eef7f2);
+        box-shadow: 0 16px 38px rgba(23, 37, 43, 0.06);
+    }
+
+    .region-shortcut {
+        padding: 7px 10px;
+        border-radius: 999px;
+        background: #e7f5ee;
+        color: #2e8052;
+        font-size: 0.74rem;
+        font-weight: 800;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    .region-shortcut:hover { color: #246a43; background: #d9efdf; }
+
+    .region-progress-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 18px;
+    }
+
+    .region-kicker, .region-step-label {
+        color: var(--teal);
+        font-size: 0.66rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+
+    .region-progress-header h2 {
+        margin: 6px 0 8px;
+        font-size: 1.45rem;
+    }
+
+    .region-progress-header p, .region-progress-footer {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.8rem;
+    }
+
+    .region-summary {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex: 0 0 auto;
+    }
+
+    .region-score { text-align: right; }
+    .region-score strong { display: block; color: var(--ink); font-size: 1.6rem; line-height: 1; }
+    .region-score span { color: var(--muted); font-size: 0.72rem; }
+
+    .region-progress-track, .region-card-track {
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e6eeea;
+    }
+
+    .region-progress-track { height: 10px; margin-bottom: 22px; }
+    .region-card-track { height: 6px; margin: 13px 0 17px; }
+    .region-progress-fill, .region-card-fill {
+        height: 100%;
+        width: 0;
+        border-radius: inherit;
+        background: var(--green);
+        transition: width 0.35s ease;
+    }
+
+    .region-arrival {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin: -3px 0 22px;
+        padding: 9px 18px;
+        border: 1px solid #bfe2cc;
+        border-radius: 14px;
+        background: linear-gradient(110deg, #f5fbf6, #e9f7ee);
+        box-shadow: 0 12px 26px rgba(35, 125, 77, 0.08);
+    }
+
+    .region-arrival-art { display: block; width: 200px; max-width: 34%; height: auto; flex: 0 0 auto; }
+    .region-arrival-copy { min-width: 0; flex: 1; }
+    .region-arrival-copy strong { display: block; margin: 4px 0; color: #246847; font-size: 0.94rem; }
+    .region-arrival-copy p { margin: 0; color: var(--muted); font-size: 0.77rem; }
+    .region-arrival-flag {
+        width: 44px;
+        height: 31px;
+        object-fit: cover;
+        border: 1px solid #c9dcd1;
+        border-radius: 5px;
+        background: #fff;
+        box-shadow: 0 3px 9px rgba(20, 55, 39, 0.12);
+    }
+
+    .region-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 14px;
+    }
+
+    .region-card {
+        --stage-accent: var(--teal);
+        --stage-soft: #e8f6f5;
+        position: relative;
+        overflow: hidden;
+        padding: 18px;
+        border: 1px solid #e1eae6;
+        border-radius: 14px;
+        background: #fff;
+        grid-column: span 2;
+    }
+
+    .region-card:nth-child(n + 4) { grid-column: span 3; }
+
+    .region-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto;
+        height: 4px;
+        background: var(--stage-accent);
+    }
+
+    .region-card[data-region="SUL"] { --stage-accent: #6785bc; --stage-soft: #edf2fb; }
+    .region-card[data-region="SUDESTE"] { --stage-accent: #8b75ad; --stage-soft: #f2eef8; }
+    .region-card[data-region="NORDESTE"] { --stage-accent: #d38b46; --stage-soft: #fff3e8; }
+    .region-card[data-region="CENTRO_OESTE"] { --stage-accent: #ae8c43; --stage-soft: #f9f3e6; }
+    .region-card.is-complete { border-color: #9ed6b1; background: #f8fdf9; }
+    .region-card.is-complete::before { background: var(--green); }
+    .region-card.is-arriving { animation: region-card-arrival 2.8s ease-out; }
+    .region-state.is-arriving { animation: region-state-arrival 2.8s ease-out; }
+
+    @keyframes region-card-arrival {
+        0%, 100% { box-shadow: 0 0 0 rgba(58, 164, 103, 0); }
+        30% { box-shadow: 0 0 0 7px rgba(58, 164, 103, 0.16); }
+    }
+    @keyframes region-state-arrival {
+        0%, 100% { transform: scale(1); }
+        35% { transform: scale(1.025); }
+    }
+
+    .region-card-heading { display: flex; align-items: center; gap: 10px; }
+    .region-card-number {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
+        border-radius: 11px;
+        background: var(--stage-soft);
+        color: var(--stage-accent);
+        font-size: 0.84rem;
+        font-weight: 800;
+    }
+
+    .region-card-heading h3 { margin: 2px 0 0; font-size: 1rem; font-weight: 800; }
+    .region-card-check { margin-left: auto; color: var(--green); font-size: 1.35rem; }
+    .region-card-caption { margin-top: 15px; color: var(--muted); font-size: 0.75rem; }
+    .region-card-fill { background: var(--stage-accent); }
+    .region-card.is-complete .region-card-fill { background: var(--green); }
+    .region-state-list { display: grid; gap: 8px; }
+
+    .region-state {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+        padding: 10px;
+        border: 1px solid #e8eeeb;
+        border-radius: 10px;
+        background: #f9fbfa;
+    }
+
+    .region-state.is-done { border-color: #c8e8d0; background: #eef9f1; }
+    .region-state-flag-wrap { position: relative; flex: 0 0 38px; width: 38px; height: 27px; }
+    .region-state-flag {
+        display: block;
+        width: 38px;
+        height: 27px;
+        object-fit: cover;
+        border: 1px solid #d6dfda;
+        border-radius: 4px;
+        background: #fff;
+    }
+    .region-state-icon {
+        position: absolute;
+        right: -5px;
+        bottom: -5px;
+        color: #369661;
+        background: #fff;
+        border-radius: 50%;
+        font-size: 0.9rem;
+        line-height: 1;
+    }
+    .region-state-name { min-width: 0; flex: 1; }
+    .region-state-name strong { display: block; font-size: 0.8rem; line-height: 1.2; }
+    .region-state-name small { display: block; margin-top: 3px; color: var(--muted); font-size: 0.67rem; }
+    .region-state-count { color: var(--muted); font-size: 0.68rem; font-weight: 800; white-space: nowrap; }
+    .region-state.is-done .region-state-count { color: #348557; }
+    .region-progress-footer { margin-top: 17px; }
+
+    @media (max-width: 920px) {
+        .region-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .region-card, .region-card:nth-child(n + 4) { grid-column: auto; }
+        .region-card:last-child { grid-column: 1 / -1; }
+    }
+
     .automatic-queue-table {
         min-width: 560px;
     }
@@ -261,13 +588,334 @@
     }
 
     @media (max-width: 650px) {
+        .live-journey { padding: 18px; }
+        .live-journey-steps { gap: 8px; }
+        .live-journey-step { gap: 8px; padding: 10px; }
+        .live-journey-step i { font-size: 1.15rem; }
         .dashboard-container { width: min(100% - 24px, 1180px); }
         .surface-panel { padding: 18px; }
         .control-row, .inventory-items { display: block; }
         .simulation-form { grid-template-columns: 1fr; }
         .current-cycle { grid-template-columns: repeat(2, 1fr); }
-        .camera-placeholder { margin-top: 16px; }
         .inventory-items span { margin-top: 12px; }
+        .region-progress-panel { padding: 20px; }
+        .region-progress-header { display: block; }
+        .region-summary { justify-content: space-between; margin-top: 18px; }
+        .region-score { text-align: left; }
+        .region-grid { grid-template-columns: 1fr; }
+        .region-card:last-child { grid-column: auto; }
+        .operation-loading { flex-direction: column; gap: 0; padding: 8px 10px 14px; text-align: center; }
+        .operation-loading-visual { width: 250px; max-width: 100%; }
+        .region-arrival { flex-wrap: wrap; justify-content: center; gap: 4px 12px; padding: 8px 14px 14px; }
+        .region-arrival-art { width: 210px; max-width: 100%; }
+        .region-arrival-copy { flex-basis: calc(100% - 56px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .region-card.is-arriving, .region-state.is-arriving { animation: none; }
+    }
+</style>
+<style>
+    /* ===== Animações para a apresentação ===== */
+    @keyframes dash-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+    @keyframes value-bump { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+    @keyframes text-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes dot-pulse { 0% { box-shadow: 0 0 0 0 currentColor; } 100% { box-shadow: 0 0 0 7px transparent; } }
+    @keyframes card-shine { 0% { transform: translateX(-120%); } 18%, 100% { transform: translateX(120%); } }
+
+    /* Entrada da página */
+    #dashboard > .page-heading,
+    .overview-main > section,
+    .overview-side > article,
+    #dashboard > .production-details { animation: dash-rise 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    .overview-main > section:nth-child(1) { animation-delay: 0.06s; }
+    .overview-main > section:nth-child(2) { animation-delay: 0.14s; }
+    .overview-main > section:nth-child(3) { animation-delay: 0.22s; }
+    .overview-side > article:nth-child(1) { animation-delay: 0.12s; }
+    .overview-side > article:nth-child(2) { animation-delay: 0.2s; }
+    #dashboard > .production-details { animation-delay: 0.3s; }
+
+    /* Cards de métricas: brilho periódico e número que pulsa ao mudar */
+    .metric-card::before {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.2) 50%, transparent 65%);
+        content: "";
+        transform: translateX(-120%);
+        animation: card-shine 7s 1.2s ease-in-out infinite;
+        pointer-events: none;
+    }
+    .metric-value { transform-origin: left center; }
+    .metric-value.is-bumped { animation: value-bump 0.55s ease; }
+    .metric-value.is-changed { animation: text-in 0.4s ease; }
+
+    /* Caminho do cubo */
+    .live-journey { position: relative; overflow: hidden; }
+    .live-journey::before {
+        position: absolute;
+        inset: 0 0 auto;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, var(--teal), var(--green), transparent) no-repeat;
+        background-size: 50% 100%;
+        content: "";
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    .live-journey.is-running::before { opacity: 1; animation: journey-flow 2.4s linear infinite; }
+    @keyframes journey-flow { from { background-position-x: -100%; } to { background-position-x: 200%; } }
+
+    .live-journey-status.is-changed { animation: text-in 0.4s ease; }
+    .live-journey-status:not(.is-stopped)::before { animation: dot-pulse 1.4s ease-out infinite; }
+
+    .live-journey-step { position: relative; transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 250ms ease; }
+    .live-journey-step.is-active { transform: translateY(-3px); }
+    .live-journey-step > i:first-child {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        width: 2.7rem;
+        height: 2.7rem;
+        border-radius: 50%;
+        background: #eff5f3;
+        font-size: 1.25rem;
+        overflow: hidden;
+        transition: background 0.25s ease, color 0.25s ease;
+    }
+    .live-journey-step.is-active > i:first-child { background: var(--teal); color: #fff; animation: step-ring 1.6s ease-out infinite; }
+    .live-journey-step.is-complete > i:first-child { background: #e2f4e7; color: #348557; }
+    @keyframes step-ring {
+        0% { box-shadow: 0 0 0 0 rgba(52, 146, 150, 0.5); }
+        100% { box-shadow: 0 0 0 12px rgba(52, 146, 150, 0); }
+    }
+
+    /* Cada ícone ativo ganha um movimento próprio */
+    .live-journey-step.is-active[data-journey-step="sensor"] > i:first-child::before { animation: icon-ping 1.2s ease-in-out infinite; }
+    .live-journey-step.is-active[data-journey-step="gripper"] > i:first-child::before { animation: icon-swing 1.4s ease-in-out infinite; transform-origin: 50% 25%; }
+    .live-journey-step.is-active[data-journey-step="conveyor"] > i:first-child::before { animation: icon-drive 1s ease-in-out infinite; }
+    .live-journey-step.is-active[data-journey-step="camera"] > i:first-child::after {
+        position: absolute;
+        right: 20%;
+        left: 20%;
+        height: 2px;
+        border-radius: 2px;
+        background: #c8fff0;
+        box-shadow: 0 0 6px #c8fff0;
+        content: "";
+        animation: icon-scan 1.2s ease-in-out infinite;
+    }
+    @keyframes icon-ping { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+    @keyframes icon-swing { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+    @keyframes icon-drive { 0%, 100% { transform: translateX(-3px); } 50% { transform: translateX(3px); } }
+    @keyframes icon-scan { 0%, 100% { top: 24%; } 50% { top: 72%; } }
+
+    .step-check {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        border-radius: 50%;
+        background: #fff;
+        color: var(--green);
+        font-size: 1.2rem;
+        line-height: 1;
+        opacity: 0;
+        transform: scale(0);
+        transition: transform 0.35s cubic-bezier(0.3, 1.6, 0.5, 1), opacity 0.2s ease;
+    }
+    .live-journey-step.is-complete .step-check { opacity: 1; transform: scale(1); }
+
+    /* Setas entre as etapas */
+    .live-journey-step:not(:last-child)::after {
+        position: absolute;
+        top: 50%;
+        right: -17px;
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        margin-top: -12px;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background: #fff;
+        color: #a6b3b7;
+        font-family: "bootstrap-icons";
+        font-size: 0.7rem;
+        content: "\F285";
+        transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+    }
+    .live-journey-step.is-complete:not(:last-child)::after { border-color: var(--green); background: var(--green); color: #fff; }
+    .live-journey-step.is-active:not(:last-child)::after { border-color: #55a89f; color: var(--teal); animation: arrow-nudge 1s ease-in-out infinite; }
+    @keyframes arrow-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+
+    .operation-loading:not(.d-none) { animation: dash-rise 0.45s ease both; }
+
+    /* Câmera em leitura do ArUco */
+    #camera-preview { transition: outline-color 0.3s ease; outline: 3px solid transparent; outline-offset: 2px; }
+    #camera-preview.is-scanning { outline-color: rgba(52, 146, 150, 0.55); }
+    #camera-preview.is-scanning::after {
+        position: absolute;
+        right: 0;
+        left: 0;
+        z-index: 2;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, #5ef0c8, transparent);
+        box-shadow: 0 0 14px #5ef0c8;
+        content: "";
+        animation: cam-scan 1.6s ease-in-out infinite;
+        pointer-events: none;
+    }
+    @keyframes cam-scan { 0%, 100% { top: 8%; } 50% { top: 90%; } }
+
+    /* Componentes: ponto de status pulsando */
+    .badge-status { display: inline-flex; align-items: center; gap: 6px; }
+    .badge-status::before { flex: none; width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ""; }
+    .badge-status:not(.badge-offline)::before { animation: dot-pulse 2s ease-out infinite; }
+
+    /* Etapas por região */
+    .region-progress-fill { position: relative; overflow: hidden; transition: width 0.9s cubic-bezier(0.2, 0.7, 0.2, 1); }
+    .region-progress-fill::after {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent) no-repeat;
+        background-size: 40% 100%;
+        content: "";
+        animation: bar-shine 2.8s ease-in-out infinite;
+    }
+    @keyframes bar-shine { from { background-position-x: -150%; } to { background-position-x: 250%; } }
+    #region-progress-score { transform-origin: right center; }
+    #region-progress-score.is-bumped { animation: value-bump 0.6s ease; }
+
+    .region-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+    .region-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(23, 37, 43, 0.08); }
+    .region-state-flag { transition: filter 0.6s ease, opacity 0.6s ease; }
+    .region-state:not(.is-done) .region-state-flag { filter: grayscale(0.8); opacity: 0.65; }
+    .region-state.is-arriving .region-state-flag { animation: flag-wave 1.1s ease-in-out 2; transform-origin: left center; }
+    .region-state.is-arriving .region-state-icon,
+    .region-card.is-arriving .region-card-check { animation: check-pop 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+    @keyframes flag-wave {
+        0%, 100% { transform: perspective(120px) rotateY(0); }
+        25% { transform: perspective(120px) rotateY(-20deg) skewY(-3deg); }
+        75% { transform: perspective(120px) rotateY(14deg) skewY(2deg); }
+    }
+    @keyframes check-pop { from { opacity: 0; transform: scale(0) rotate(-30deg); } to { opacity: 1; transform: none; } }
+    .region-arrival:not(.d-none) { animation: arrival-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1.2) both; }
+    @keyframes arrival-in { from { opacity: 0; transform: translateY(-8px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+    /* Linha de produção: cubo novo entra deslizando */
+    .production-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .production-card:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(23, 37, 43, 0.1); }
+    .production-card.is-new { animation: card-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    @keyframes card-in { from { opacity: 0; transform: translateX(-14px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+
+    /* ===== Visão geral: tudo da operação na mesma tela ===== */
+    .overview-grid { display: grid; gap: 16px; margin-bottom: 16px; }
+    .overview-main, .overview-side { display: grid; gap: 16px; align-content: start; min-width: 0; }
+    .overview-main .region-progress-panel { margin-bottom: 0; }
+    .production-section .panel-title { margin-bottom: 14px; }
+    .production-section .production-list-shell { margin-bottom: 12px; }
+    .production-section .production-pagination { margin: 0; }
+
+    /* Status de cada componente embaixo da sua etapa */
+    .live-journey-step .badge-status {
+        display: inline-flex;
+        margin-top: 7px;
+        padding: 3px 9px;
+        font-size: 0.66rem;
+        line-height: 1.25;
+    }
+
+    /* Garra em movimento sobreposta à câmera, sem empurrar o layout */
+    .camera-placeholder .operation-loading {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        left: 10px;
+        z-index: 3;
+        gap: 10px;
+        margin: 0;
+        padding: 6px 12px;
+        border-radius: 12px;
+        background: rgba(243, 250, 247, 0.95);
+        box-shadow: 0 8px 22px rgba(23, 37, 43, 0.14);
+    }
+    .camera-placeholder .operation-loading-visual { width: 130px; max-width: 42%; }
+
+    @media (min-width: 768px) and (max-width: 1199px) {
+        .overview-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (min-width: 1200px) {
+        #dashboard.dashboard-container { width: min(1560px, calc(100% - 40px)); }
+        #dashboard { padding-top: 14px !important; }
+        #dashboard > .page-heading { margin-bottom: 12px !important; }
+        #dashboard > .page-heading h1 { font-size: 2.3rem; }
+        #dashboard > .page-heading .eyebrow { margin-bottom: 2px !important; }
+        .overview-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 0.36fr); align-items: start; }
+
+        #dashboard .metric-card { min-height: 84px; padding: 12px 20px; }
+
+        .live-journey { padding: 16px 20px 18px; }
+        .live-journey-heading { margin-bottom: 12px; }
+        .live-journey-step { padding: 10px 12px; }
+
+        .region-progress-panel { padding: 18px 20px; }
+        .region-progress-header { margin-bottom: 12px; }
+        .region-progress-header h2 { margin: 4px 0; font-size: 1.2rem; }
+        .region-progress-track { margin-bottom: 14px; }
+        .region-progress-footer { display: none; }
+        .region-progress-panel { position: relative; }
+        .region-arrival {
+            position: absolute;
+            top: 12px;
+            right: 20px;
+            left: 20px;
+            z-index: 4;
+            margin: 0;
+            padding: 6px 14px;
+            box-shadow: 0 14px 30px rgba(35, 125, 77, 0.18);
+        }
+        .region-arrival-art { width: 150px; }
+        .region-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+        .region-card, .region-card:nth-child(n + 4) { grid-column: auto; padding: 12px; }
+        .region-card-number { width: 30px; height: 30px; flex-basis: 30px; border-radius: 9px; font-size: 0.75rem; }
+        .region-card-heading h3 { font-size: 0.92rem; }
+        .region-card-check { font-size: 1.15rem; }
+        .region-card-caption { margin-top: 8px; font-size: 0.7rem; }
+        .region-card-track { margin: 8px 0 10px; }
+        .region-state { gap: 8px; padding: 7px 8px; }
+        .region-state-flag-wrap, .region-state-flag { width: 32px; height: 23px; flex-basis: 32px; }
+        .region-state-name strong { font-size: 0.74rem; }
+        .region-state-name small { font-size: 0.62rem; }
+        .region-state:not(.is-done) .region-state-count { display: none; }
+
+        .overview-side .production-list { flex-direction: column; gap: 8px; margin: 0; padding: 0; overflow: visible; }
+        .overview-side .production-list > * { flex: none; width: auto; }
+        .overview-side .production-card { min-height: 0; padding: 9px 12px; }
+        .overview-side .production-card > span,
+        .overview-side .production-card:not(.error-card) small { display: none; }
+        .overview-side .production-card strong { margin-top: 0; font-size: 0.82rem; }
+        .overview-side .production-card p { display: inline-block; margin: 3px 12px 0 0; font-size: 0.72rem; }
+    }
+
+    /* Telas baixas (projetor 1366×768): esconde textos de apoio para caber sem rolar */
+    @media (min-width: 1200px) and (max-height: 860px) {
+        #dashboard > .page-heading { display: none; }
+        #dashboard .metric-card { min-height: 72px; padding: 10px 18px; }
+        .live-journey-heading p, .region-progress-header p { display: none; }
+        .live-journey-heading { margin-bottom: 10px; }
+        .region-progress-header h2 { margin-bottom: 0; }
+        #webcam .panel-title, .production-section .panel-title { margin-bottom: 10px; }
+    }
+
+    @media (max-width: 920px) {
+        .live-journey-step::after { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #dashboard *, #dashboard *::before, #dashboard *::after,
+        #dashboard > section, #dashboard > .page-heading { animation: none !important; transition: none !important; }
     }
 </style>
 {% endblock %}
@@ -279,129 +927,185 @@
 <main id="dashboard" class="dashboard-container py-4 py-lg-5">
     {% include "components/page_header.html" with context %}
 
-    <section class="row g-3 mb-3" aria-label="Indicadores da operação">
-        <div class="col-12 col-md-4">
-            {{ metric_card(
-                "primary", "bi-cpu-fill", "connected-components", "3",
-                "Componentes", "conectados", url_for("pages.connection"),
-                "Ver conexão", true
-            ) }}
-        </div>
-        <div class="col-12 col-md-4">
-            {{ metric_card(
-                "accent", "bi-boxes", "packages-count", "0",
-                "Ciclos concluídos", "no histórico", url_for("pages.production"),
-                "Ver histórico", true
-            ) }}
-        </div>
-        <div class="col-12 col-md-4">
-            {{ metric_card(
-                "dark", "bi-stopwatch-fill", "system-state-metric", "IDLE",
-                "Estado", "do sistema", "", "", false
-            ) }}
-        </div>
-    </section>
+    <div class="overview-grid">
+        <div class="overview-main">
+            <section class="row g-3" aria-label="Indicadores da operação">
+                <div class="col-12 col-md-4">
+                    {{ metric_card(
+                        "primary", "bi-cpu-fill", "connected-components", "3",
+                        "Componentes", "conectados", url_for("pages.connection"),
+                        "Ver conexão", true
+                    ) }}
+                </div>
+                <div class="col-12 col-md-4">
+                    {{ metric_card(
+                        "accent", "bi-boxes", "packages-count", "0",
+                        "Ciclos concluídos", "no histórico", url_for("pages.production"),
+                        "Ver histórico", true
+                    ) }}
+                </div>
+                <div class="col-12 col-md-4">
+                    {{ metric_card(
+                        "dark", "bi-stopwatch-fill", "system-state-metric", "IDLE",
+                        "Estado", "do sistema", "", "", false
+                    ) }}
+                </div>
+            </section>
 
-    <section class="row g-3" aria-label="Controles e monitoramento">
-        <div class="col-12 col-lg-4">
-            <article id="conexao"class="surface-panel">
-                <div class="panel-title">
-                    <h2>Componentes</h2>
+            <section class="live-journey" aria-label="Caminho do cubo em tempo real">
+                <div class="live-journey-heading">
+                    <div>
+                        <h2>Caminho do cubo</h2>
+                        <p>Da detecção à entrega, acompanhe cada etapa da operação.</p>
+                    </div>
+                    <div class="live-journey-actions">
+                        <span id="live-journey-status" class="live-journey-status is-stopped" role="status" aria-live="polite">Aguardando operação</span>
+                        <button type="button" id="presentation-fullscreen" class="btn btn-outline-secondary btn-sm d-none" aria-label="Expandir painel em tela cheia"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i> Tela cheia</button>
+                    </div>
                 </div>
-                <div class="device-status">
-                    <span>Braço mecânico</span>
-                    <span id="gripper-status"class="badge-status">Conectado</span>
+                <div class="live-journey-steps" id="live-journey-steps" aria-label="Etapas do cubo">
+                    <div class="live-journey-step" data-journey-step="sensor"><i class="bi bi-broadcast" aria-hidden="true"></i><div><strong>Sensor</strong><span>Detecta o cubo</span><span id="presence-status" class="badge-status badge-offline" title="HC-SR04">Aguardando sensor</span></div><i class="bi bi-check-circle-fill step-check" aria-hidden="true"></i></div>
+                    <div class="live-journey-step" data-journey-step="gripper"><i class="bi bi-robot" aria-hidden="true"></i><div><strong>Garra</strong><span>Coleta e deposita</span><span id="gripper-status" class="badge-status" title="Braço mecânico">Conectado</span></div><i class="bi bi-check-circle-fill step-check" aria-hidden="true"></i></div>
+                    <div class="live-journey-step" data-journey-step="camera"><i class="bi bi-upc-scan" aria-hidden="true"></i><div><strong>ArUco</strong><span>Identifica o destino</span><span id="camera-status" class="badge-status badge-offline" title="Webcam">Desconectado</span></div><i class="bi bi-check-circle-fill step-check" aria-hidden="true"></i></div>
+                    <div class="live-journey-step" data-journey-step="conveyor"><i class="bi bi-truck" aria-hidden="true"></i><div><strong>Esteira</strong><span>Faz a entrega</span><span id="conveyor-status" class="badge-status" title="Esteira">Conectado</span></div><i class="bi bi-check-circle-fill step-check" aria-hidden="true"></i></div>
                 </div>
-                <div class="device-status">
-                    <span>Esteira</span>
-                    <span id="conveyor-status" class="badge-status">Conectado</span>
-                </div>
-                <div class="device-status">
-                    <span>Webcam</span>
-                    <span id="camera-status" class="badge-status badge-offline">Desconectado</span>
-                </div>
-                <div class="device-status">
-                    <span>HC-SR04</span>
-                    <span id="presence-status" class="badge-status badge-offline">Aguardando sensor</span>
-                </div>
-                <div id="system-alert" class="alert alert-warning mt-4 mb-0 d-none">
+                <div id="system-alert" class="alert alert-warning mt-3 mb-0 d-none">
                     <i class="bi bi-exclamation-triangle-fill"></i>
                     <span>
                         <strong>Aviso</strong><br>
                         <span id="system-alert-message">Falha operacional.</span>
                     </span>
                 </div>
-            </article>
+            </section>
+
+            <section id="region-progress" class="region-progress-panel" aria-label="Etapas de entrega por região">
+                <div class="region-progress-header">
+                    <div>
+                        <span class="region-kicker">Roteiro da bancada</span>
+                        <h2>Etapas por região</h2>
+                        <p>5 regiões, 2 estados com caixa fixa por região. Cada entrega confirmada avança uma etapa.</p>
+                    </div>
+                    <div class="region-summary">
+                        <div class="region-score">
+                            <strong id="region-progress-score">0/10</strong>
+                            <span id="region-progress-regions">0 de 5 regiões completas</span>
+                        </div>
+                        <button type="button" id="region-new-round" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Nova rodada
+                        </button>
+                    </div>
+                </div>
+                <div class="region-progress-track" role="progressbar" aria-label="Estados entregues" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0">
+                    <div id="region-progress-fill" class="region-progress-fill"></div>
+                </div>
+                <div id="region-arrival" class="region-arrival d-none" role="status" aria-live="polite" aria-atomic="true" aria-hidden="true">
+                    <img id="region-arrival-art" class="region-arrival-art" src="{{ url_for('static', filename='images/caixa-chegando-regiao.svg') }}" alt="" width="320" height="120">
+                    <div class="region-arrival-copy">
+                        <span class="region-kicker">Entrega confirmada</span>
+                        <strong id="region-arrival-title">Caixinha chegou ao destino</strong>
+                        <p id="region-arrival-detail"></p>
+                    </div>
+                    <img id="region-arrival-flag" class="region-arrival-flag" alt="" width="44" height="31">
+                </div>
+                <div id="region-grid" class="region-grid" aria-live="polite">
+                    <p class="text-secondary mb-0">Carregando etapas...</p>
+                </div>
+                <p id="region-progress-footer" class="region-progress-footer">Somente entregas físicas finalizadas no destino correto contam. O histórico permanece salvo ao iniciar outra rodada.</p>
+            </section>
         </div>
-        <div class="col-12 col-lg-8">
-            <article id="linha-de-producao" class="production-section">
-                <div class="panel-title pt-4">
+
+        <aside class="overview-side" aria-label="Câmera e linha de produção">
+            <article id="webcam" class="surface-panel">
+                <div class="panel-title">
+                    <h2>Câmera</h2>
+                </div>
+                <div id="camera-preview" class="camera-placeholder">
+                    <img id="camera-image" class="camera-image d-none" alt="Preview da webcam">
+                    <div id="camera-placeholder-content" class="camera-placeholder-content">
+                        <i class="bi bi-camera-video-fill"></i>
+                        <span>Webcam simulada</span>
+                    </div>
+                    <div id="operation-loading" class="operation-loading d-none" role="status" aria-live="polite" aria-atomic="true" aria-hidden="true">
+                        <img class="operation-loading-visual" src="{{ url_for('static', filename='images/garra-loading.svg') }}" alt="" width="360" height="160">
+                        <div class="operation-loading-copy">
+                            <strong>Garra em movimento</strong>
+                            <span id="operation-loading-state">Movendo o cubo até a esteira…</span>
+                        </div>
+                    </div>
+                    <button type="button" id="camera-expand-button" class="camera-expand-button d-none"
+                            title="Expandir preview" aria-label="Expandir preview">
+                        <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </article>
+
+            <article id="linha-de-producao" class="surface-panel production-section">
+                <div class="panel-title">
                     <h2>Linha de produção</h2>
+                    <a id="region-progress-shortcut" class="region-shortcut" href="#region-progress">Etapas 0/10 <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
                 </div>
                 <div class="production-list-shell">
                     <div id="production-cards" class="production-list" aria-label="Cubos da linha de produção" aria-live="polite">
                         <p class="production-empty">Nenhum cubo identificado.</p>
                     </div>
                 </div>
-
-                <div class="surface-panel production-details">
-                    <div class="panel-title">
-                        <h2>Fila automática</h2>
-                        <span id="queue-count" class="small text-secondary">0 unidades</span>
+                <nav class="production-pagination" aria-label="Páginas dos eventos recentes">
+                    <span id="production-page-info" aria-live="polite">Página 1 de 1</span>
+                    <div class="d-flex gap-2">
+                        <button type="button" id="production-prev" class="btn btn-outline-secondary btn-sm" disabled>Anterior</button>
+                        <button type="button" id="production-next" class="btn btn-outline-secondary btn-sm" disabled>Próxima</button>
                     </div>
-                    <div id="queue-notice" class="alert alert-info py-2" role="status" aria-live="polite">Aguardando conexão dos dispositivos.</div>
-                    <div class="d-flex gap-2 flex-wrap mb-3" aria-label="Controle da operação">
-                        <button id="flow-start" class="btn btn-primary" disabled><i class="bi bi-play-fill" aria-hidden="true"></i> Iniciar operação</button>
-                        <button id="flow-stop" class="btn btn-outline-danger"><i class="bi bi-stop-fill" aria-hidden="true"></i> Parar</button>
-                        <button id="flow-reset" class="btn btn-outline-secondary" disabled><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Resetar operação</button>
-                        <button id="flow-sync-neutral" class="btn btn-outline-secondary" disabled><i class="bi bi-crosshair" aria-hidden="true"></i> Confirmar braço no neutro</button>
-                        <button id="flow-discard" class="btn btn-warning d-none"><i class="bi bi-trash" aria-hidden="true"></i> Descartar unidade</button>
-                        <button id="flow-release-servos" class="btn btn-outline-secondary" disabled><i class="bi bi-unlock" aria-hidden="true"></i> Soltar servos</button>
-                    </div>
-                    <p id="flow-guidance" class="small text-secondary" role="status"></p>
-                    <div id="flow-action-error" class="alert alert-danger d-none" role="alert"></div>
-                    <div class="table-responsive mb-3">
-                        <table class="table table-sm align-middle automatic-queue-table">
-                            <thead><tr><th>Unidade</th><th>Produto</th><th>Região</th><th>Destino</th><th>Braço</th><th>Esteira</th></tr></thead>
-                            <tbody id="queue-table-body"><tr><td colspan="6">Nenhum cubo identificado.</td></tr></tbody>
-                        </table>
-                    </div>
-                    <div class="current-cycle" aria-label="Dados do ciclo atual">
-                        <div class="cycle-field">
-                            <span>Produto</span>
-                            <strong id="current-product">—</strong>
-                        </div>
-                        <div class="cycle-field">
-                            <span>UF</span>
-                            <strong id="current-state">—</strong>
-                        </div>
-                        <div class="cycle-field">
-                            <span>Macrorregião</span>
-                            <strong id="current-macroregion">—</strong>
-                        </div>
-                        <div class="cycle-field">
-                            <span>Destino</span>
-                            <strong id="current-destination">—</strong>
-                        </div>
-                    </div>
-                </div>
+                </nav>
             </article>
+        </aside>
+    </div>
 
-            <article id="webcam" class="surface-panel mt-3">
-                <div class="control-row">
-                    <div id="camera-preview" class="camera-placeholder">
-                        <img id="camera-image" class="camera-image d-none" alt="Preview da webcam">
-                        <div id="camera-placeholder-content" class="camera-placeholder-content">
-                            <i class="bi bi-camera-video-fill"></i>
-                            <span>Webcam simulada</span>
-                        </div>
-                        <button type="button" id="camera-expand-button" class="camera-expand-button d-none"
-                                title="Expandir preview" aria-label="Expandir preview">
-                            <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                </div>
-            </article>
+    <section class="surface-panel production-details" aria-label="Controle da operação e fila automática">
+        <div class="panel-title">
+            <h2>Fila automática</h2>
+            <span id="queue-count" class="small text-secondary">0 unidades</span>
+        </div>
+        <div id="queue-notice" class="alert alert-info py-2" role="status" aria-live="polite">Aguardando conexão dos dispositivos.</div>
+        <div class="d-flex gap-2 flex-wrap mb-3" aria-label="Controle da operação">
+            <button id="flow-start" class="btn btn-primary" disabled><i class="bi bi-play-fill" aria-hidden="true"></i> Iniciar operação</button>
+            <button id="flow-stop" class="btn btn-outline-danger"><i class="bi bi-stop-fill" aria-hidden="true"></i> Parar</button>
+            <button id="flow-reset" class="btn btn-outline-secondary" disabled><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Resetar operação</button>
+            <button id="flow-sync-neutral" class="btn btn-outline-secondary" disabled><i class="bi bi-crosshair" aria-hidden="true"></i> Confirmar braço no neutro</button>
+            <button id="flow-discard" class="btn btn-warning d-none"><i class="bi bi-trash" aria-hidden="true"></i> Descartar unidade</button>
+            <button id="flow-release-servos" class="btn btn-outline-secondary" disabled><i class="bi bi-unlock" aria-hidden="true"></i> Soltar servos</button>
+        </div>
+        <p id="flow-guidance" class="small text-secondary" role="status"></p>
+        <div id="flow-action-error" class="alert alert-danger d-none" role="alert"></div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle automatic-queue-table">
+                <thead><tr><th>Unidade</th><th>Produto</th><th>Região</th><th>Destino</th><th>Braço</th><th>Esteira</th></tr></thead>
+                <tbody id="queue-table-body"><tr><td colspan="6">Nenhum cubo identificado.</td></tr></tbody>
+            </table>
+        </div>
+        <nav class="production-pagination queue-pagination" aria-label="Páginas das unidades da fila automática">
+            <span id="queue-page-info" aria-live="polite">Nenhuma unidade</span>
+            <div class="d-flex gap-2">
+                <button type="button" id="queue-prev" class="btn btn-outline-secondary btn-sm" disabled>Anterior</button>
+                <button type="button" id="queue-next" class="btn btn-outline-secondary btn-sm" disabled>Próxima</button>
+            </div>
+        </nav>
+        <div class="current-cycle" aria-label="Dados do ciclo atual">
+            <div class="cycle-field">
+                <span>Produto</span>
+                <strong id="current-product">—</strong>
+            </div>
+            <div class="cycle-field">
+                <span>UF</span>
+                <strong id="current-state">—</strong>
+            </div>
+            <div class="cycle-field">
+                <span>Macrorregião</span>
+                <strong id="current-macroregion">—</strong>
+            </div>
+            <div class="cycle-field">
+                <span>Destino</span>
+                <strong id="current-destination">—</strong>
+            </div>
         </div>
     </section>
 
@@ -416,6 +1120,66 @@
     let previewLoading = false;
     let previewTimeout = null;
     let flowActionPending = false;
+    // Na visão geral (tela larga) a lista fica na coluna lateral e mostra 3 cubos.
+    const productionPageSize = window.matchMedia("(min-width: 1200px)").matches ? 3 : 4;
+    let productionPage = 1;
+    let latestProductionData = null;
+    const queuePageSize = 8;
+    let queuePage = null;
+    let lastQueueSize = 0;
+    let latestQueueSnapshot = null;
+    let regionProgressSignature = null;
+    let regionRoundPending = false;
+    let regionStateCounts = null;
+    let regionArrivalTimer = null;
+    const regionFlagBase = "{{ url_for('static', filename='images/flags/') }}";
+    const regionArrivalAsset = "{{ url_for('static', filename='images/caixa-chegando-regiao.svg') }}";
+    const regionFlagUfs = new Set(["RO", "AM", "SC", "PR", "SP", "MG", "BA", "PE", "MT", "GO"]);
+    const armMovementStates = new Set(["PEGANDO_OBJETO", "POSICIONANDO_OBJETO", "SOLTANDO_OBJETO"]);
+    const armMovementDescriptions = {
+        PEGANDO_OBJETO: "Pegando o cubo…",
+        POSICIONANDO_OBJETO: "Levando o cubo até a esteira…",
+        SOLTANDO_OBJETO: "Depositando o cubo na esteira…"
+    };
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let seenCycleIds = null;
+
+    function replayClass(element, className) {
+        if (!element || reduceMotion) return;
+        element.classList.remove(className);
+        void element.offsetWidth;
+        element.classList.add(className);
+    }
+
+    function setAnimatedText(selector, text) {
+        const $el = $(selector);
+        if ($el.text() === text) return;
+        $el.text(text);
+        replayClass($el[0], "is-changed");
+    }
+
+    // Conta do valor anterior até o novo; na primeira carga sobe a partir de zero.
+    function setAnimatedValue(selector, value) {
+        const el = $(selector)[0];
+        if (!el) return;
+        const target = Number(value) || 0;
+        const known = el.dataset.value !== undefined;
+        const from = known ? Number(el.dataset.value) : 0;
+        if (known && from === target) return;
+        el.dataset.value = target;
+        if (reduceMotion) { el.textContent = target; return; }
+        if (known) replayClass(el, "is-bumped");
+        const start = performance.now();
+        const duration = known ? 500 : 900;
+        cancelAnimationFrame(el._countFrame);
+        const tick = now => {
+            const t = Math.min(1, (now - start) / duration);
+            el.textContent = Math.round(from + (target - from) * (1 - Math.pow(1 - t, 3)));
+            if (t < 1) el._countFrame = requestAnimationFrame(tick);
+        };
+        el._countFrame = requestAnimationFrame(tick);
+    }
 
     function setFeedback(message) {
         $("#system-alert").removeClass("d-none");
@@ -437,6 +1201,34 @@
             VALIDANDO_ARUCO: "Validando cadastro", DESTINO_DEFINIDO: "Destino definido",
             TRANSPORTANDO: "Em transporte", FINALIZADO: "Concluída", ERRO: "Erro",
             INTERROMPIDO: "Interrompida", PARADO: "Parado", PRONTO: "Pronto para iniciar"};
+
+    function renderLiveJourney(data) {
+        const flow = data.fila?.fluxo || {};
+        const steps = ["sensor", "gripper", "camera", "conveyor"];
+        const phase = data.estado;
+        let active = -1;
+        if (flow.ativo && flow.estado === "AGUARDANDO_SENSOR") active = 0;
+        else if (flow.ativo && ["COLETANDO", "AGUARDANDO_OBJETO", "PEGANDO_OBJETO", "POSICIONANDO_OBJETO", "SOLTANDO_OBJETO", "OBJETO_POSICIONADO"].includes(phase)) active = 1;
+        else if (flow.ativo && ["LENDO_ARUCO", "VALIDANDO_ARUCO", "DESTINO_DEFINIDO"].includes(phase)) active = 2;
+        else if (flow.ativo && ["TRANSPORTANDO", "FINALIZADO"].includes(phase)) active = 3;
+        else if (flow.ativo && flow.estado === "COLETANDO") active = 1;
+        $("#live-journey-steps .live-journey-step").each(function (index) {
+            $(this).toggleClass("is-active", index === active)
+                .toggleClass("is-complete", active > index)
+                .attr("aria-current", index === active ? "step" : null);
+        });
+        const status = flow.ativo
+            ? active === 0 ? "Aguardando cubo no sensor"
+                : active === 1 ? "Garra em movimento"
+                : active === 2 ? "Lendo o ArUco"
+                : active === 3 ? (phase === "FINALIZADO" ? "Entrega concluída" : "Esteira em movimento")
+                : labels[flow.estado] || "Preparando operação"
+            : labels[flow.estado] || "Aguardando operação";
+        setAnimatedText("#live-journey-status", status);
+        $("#live-journey-status").toggleClass("is-stopped", !flow.ativo);
+        $(".live-journey").toggleClass("is-running", Boolean(flow.ativo));
+        $("#camera-preview").toggleClass("is-scanning", active === 2);
+    }
 
     async function controlFlow(endpoint) {
         if (flowActionPending && endpoint !== '/api/system/stop') return;
@@ -486,17 +1278,30 @@
 
     function renderQueue(snapshot) {
         const queueItems = snapshot.itens || [];
+        latestQueueSnapshot = snapshot;
+        const pageCount = Math.max(1, Math.ceil(queueItems.length / queuePageSize));
+        const previousPageCount = Math.max(1, Math.ceil(lastQueueSize / queuePageSize));
+        const followingLatest = queuePage === null || queuePage === previousPageCount;
+        if (queuePage === null || (queueItems.length > lastQueueSize && followingLatest)) queuePage = pageCount;
+        else queuePage = Math.min(Math.max(queuePage, 1), pageCount);
+        lastQueueSize = queueItems.length;
+        const start = (queuePage - 1) * queuePageSize;
         const $body = $("#queue-table-body").empty();
         $("#queue-count").text(`${queueItems.length} unidade${queueItems.length === 1 ? "" : "s"}`);
         if (!queueItems.length) $body.append($("<tr>").append($("<td>", {colspan: 6}).text("Nenhum cubo identificado.")));
-        queueItems.forEach((item, index) => {
+        queueItems.slice(start, start + queuePageSize).forEach((item, index) => {
             const phase = item.estado === "PROCESSANDO" ?
                 (snapshot.fluxo?.ciclo_id === item.ciclo_id ? snapshot.fluxo.estado : item.etapa) : item.estado;
-            $body.append($("<tr>").append($("<td>").text(index + 1), $("<td>").text(item.produto_id),
+            $body.append($("<tr>").append($("<td>").text(start + index + 1), $("<td>").text(item.produto_id),
                 $("<td>").text((item.macroregiao || "—").replace("_", "-")), $("<td>").text(item.destino || "—"),
                 $("<td>").append(item.braco_concluido ? completionMark("Concluído") : document.createTextNode("Em operação")),
                 $("<td>").text(labels[phase] || phase).attr("title", item.erro?.mensagem || "")));
         });
+        $("#queue-page-info").text(queueItems.length
+            ? `${start + 1}–${Math.min(start + queuePageSize, queueItems.length)} de ${queueItems.length} · Página ${queuePage} de ${pageCount}`
+            : "Nenhuma unidade");
+        $("#queue-prev").prop("disabled", queuePage === 1);
+        $("#queue-next").prop("disabled", queuePage === pageCount);
         const flow = snapshot.fluxo || {};
         const parts = [labels[flow.estado] || flow.estado || "Aguardando conexão"];
         if (snapshot.proxima_caixa_liberada) parts.push("Próxima caixa liberada");
@@ -511,7 +1316,127 @@
             document.createTextNode(` ${label}`));
     }
 
+    function hideRegionArrival() {
+        window.clearTimeout(regionArrivalTimer);
+        regionArrivalTimer = null;
+        $("#region-arrival").addClass("d-none").attr("aria-hidden", "true");
+    }
+
+    function detectRegionArrival(progress) {
+        const counts = new Map();
+        const arrivals = [];
+        (progress.regioes || []).forEach(region => {
+            region.estados.forEach(state => {
+                const count = Number(state.entregas) || 0;
+                counts.set(state.uf, count);
+                if (regionStateCounts && count > (regionStateCounts.get(state.uf) || 0)) {
+                    arrivals.push({region, state});
+                }
+            });
+        });
+        const restarted = regionStateCounts && [...counts].some(([uf, count]) => count < (regionStateCounts.get(uf) || 0));
+        regionStateCounts = counts;
+        if (restarted) {
+            hideRegionArrival();
+            return null;
+        }
+        arrivals.sort((a, b) => (Date.parse(a.state.ultima_entrega) || 0) - (Date.parse(b.state.ultima_entrega) || 0));
+        return arrivals.length ? arrivals[arrivals.length - 1] : null;
+    }
+
+    function showRegionArrival({region, state}) {
+        $("#region-arrival-title").text(`${state.nome} entregue em ${state.destino}`);
+        $("#region-arrival-detail").text(`${region.nome} · entrega física confirmada`);
+        $("#region-arrival-art").attr("src", `${regionArrivalAsset}?arrival=${Date.now()}`);
+        if (regionFlagUfs.has(state.uf)) {
+            $("#region-arrival-flag").removeClass("d-none")
+                .attr({src: `${regionFlagBase}${state.uf.toLowerCase()}.svg`, alt: `Bandeira de ${state.nome}`});
+        } else {
+            $("#region-arrival-flag").addClass("d-none").removeAttr("src");
+        }
+        $("#region-arrival").removeClass("d-none").attr("aria-hidden", "false");
+        window.clearTimeout(regionArrivalTimer);
+        regionArrivalTimer = window.setTimeout(hideRegionArrival, 5600);
+    }
+
+    function renderRegionProgress(progress) {
+        if (!progress) return;
+        const signature = JSON.stringify(progress);
+        if (signature === regionProgressSignature) return;
+        regionProgressSignature = signature;
+        const arrival = detectRegionArrival(progress);
+        const delivered = progress.estados_entregues || 0;
+        const total = progress.total_estados || 10;
+        const scoreText = `${delivered}/${total}`;
+        const $score = $("#region-progress-score");
+        const scoreChanged = $score.text() !== scoreText && $score.data("rendered");
+        $score.text(scoreText).data("rendered", true);
+        if (scoreChanged) replayClass($score[0], "is-bumped");
+        $("#region-progress-shortcut").html("").append(document.createTextNode(`Etapas ${delivered}/${total} `),
+            $("<i>", {class: "bi bi-arrow-up-right", "aria-hidden": "true"}));
+        $("#region-progress-regions").text(`${progress.regioes_completas} de ${progress.total_regioes} regiões completas`);
+        $("#region-progress-fill").css("width", `${100 * delivered / total}%`);
+        $(".region-progress-track").attr({"aria-valuemax": total, "aria-valuenow": delivered});
+        const roundLabel = progress.rodada_iniciada_em
+            ? `Rodada iniciada em ${new Date(progress.rodada_iniciada_em).toLocaleString("pt-BR")}.`
+            : "Progresso acumulado desde o início do histórico.";
+        $("#region-progress-footer").text(`${roundLabel} Somente entregas físicas finalizadas no destino correto contam; simulações não avançam as etapas.`);
+
+        const $grid = $("#region-grid").empty();
+        (progress.regioes || []).forEach(region => {
+            const $card = $("<article>", {class: "region-card", "data-region": region.codigo})
+                .toggleClass("is-complete", region.concluida)
+                .toggleClass("is-arriving", arrival?.region.codigo === region.codigo);
+            const $heading = $("<div>", {class: "region-card-heading"}).append(
+                $("<span>", {class: "region-card-number"}).text(String(region.numero).padStart(2, "0")),
+                $("<div>").append(
+                    $("<span>", {class: "region-step-label"}).text(`Etapa ${region.numero}`),
+                    $("<h3>").text(region.nome)
+                )
+            );
+            if (region.concluida) $heading.append($("<i>", {class: "bi bi-check-circle-fill region-card-check", "aria-label": "Região concluída"}));
+            $card.append($heading,
+                $("<div>", {class: "region-card-caption"}).text(region.concluida ? "Região concluída" : `${region.entregues} de ${region.total} estados entregues`),
+                $("<div>", {class: "region-card-track"}).append(
+                    $("<div>", {class: "region-card-fill"}).css("width", `${100 * region.entregues / region.total}%`)
+                )
+            );
+            const $states = $("<div>", {class: "region-state-list"});
+            region.estados.forEach(state => {
+                const $row = $("<div>", {class: "region-state"})
+                    .toggleClass("is-done", state.concluido)
+                    .toggleClass("is-arriving", arrival?.state.uf === state.uf);
+                const $flag = regionFlagUfs.has(state.uf)
+                    ? $("<span>", {class: "region-state-flag-wrap"}).append(
+                        $("<img>", {
+                            class: "region-state-flag",
+                            src: `${regionFlagBase}${state.uf.toLowerCase()}.svg`,
+                            alt: `Bandeira de ${state.nome}`,
+                            loading: "lazy",
+                            width: 38,
+                            height: 27
+                        })
+                    )
+                    : $("<span>", {class: "region-state-flag-wrap", "aria-hidden": "true"});
+                if (state.concluido) $flag.append($("<i>", {class: "bi bi-check-circle-fill region-state-icon", "aria-hidden": "true"}));
+                $row.append(
+                    $flag,
+                    $("<div>", {class: "region-state-name"}).append(
+                        $("<strong>").text(state.nome),
+                        $("<small>").text(`${state.uf} · ${state.destino}`)
+                    ),
+                    $("<span>", {class: "region-state-count"}).text(state.concluido ? `${state.entregas}×` : "Pendente")
+                );
+                if (state.ultima_entrega) $row.attr("title", `Última entrega: ${new Date(state.ultima_entrega).toLocaleString("pt-BR")}`);
+                $states.append($row);
+            });
+            $grid.append($card.append($states));
+        });
+        if (arrival) showRegionArrival(arrival);
+    }
+
     function renderProduction(data) {
+        latestProductionData = data;
         const $cards = $("#production-cards").empty();
         const observation = data.identificacao || {};
         if (observation.estado === "IDENTIFICADO" && observation.produto) {
@@ -527,8 +1452,14 @@
                 $("<p>").text(observation.erro?.mensagem || "Falha de leitura")));
         }
         const cycles = data.producao || [];
-        cycles.forEach(cycle => {
+        const pageCount = Math.max(1, Math.ceil(cycles.length / productionPageSize));
+        productionPage = Math.min(productionPage, pageCount);
+        const start = (productionPage - 1) * productionPageSize;
+        const firstRender = seenCycleIds === null;
+        if (firstRender) seenCycleIds = new Set();
+        cycles.slice(start, start + productionPageSize).forEach(cycle => {
             const $card = $("<article>", {class: "production-card", "data-cycle": cycle.id});
+            if (!firstRender && !seenCycleIds.has(cycle.id)) $card.addClass("is-new");
             $card.toggleClass("error-card", ["ERRO", "PARADO"].includes(cycle.estado));
             const mode = cycle.simulado === true ? "Simulação" : cycle.simulado === false ? "Operação física" : "Histórico";
             $card.append($("<span>").text(mode), $("<strong>").text(cycle.produto_id || "Cubo em coleta"),
@@ -540,7 +1471,11 @@
                 $("<small>").text(cycle.erro?.mensagem || cycle.id));
             $cards.append($card);
         });
+        cycles.forEach(cycle => seenCycleIds.add(cycle.id));
         if (!$cards.children().length) $cards.append($("<p>", {class: "production-empty"}).text("Nenhum cubo identificado."));
+        $("#production-page-info").text(`Página ${productionPage} de ${pageCount} · ${cycles.length} evento${cycles.length === 1 ? "" : "s"} recente${cycles.length === 1 ? "" : "s"}`);
+        $("#production-prev").prop("disabled", productionPage === 1);
+        $("#production-next").prop("disabled", productionPage === pageCount);
     }
 
     function releasePreviewRequest() {
@@ -588,7 +1523,12 @@
             currentCameraConnected = Boolean(data.camera);
             renderQueue(data.fila);
             renderProduction(data);
+            renderRegionProgress(data.etapas_regioes);
+            renderLiveJourney(data);
             const flow = data.fila.fluxo;
+            const armMoving = flow.ativo && Boolean(flow.ciclo_id) && armMovementStates.has(data.estado) && !data.calibracao_ativa;
+            $("#operation-loading").toggleClass("d-none", !armMoving).attr("aria-hidden", String(!armMoving));
+            if (armMoving) $("#operation-loading-state").text(armMovementDescriptions[data.estado]);
             const needsReset = ['PARADO', 'ERRO', 'INTERROMPIDO'].includes(flow.estado)
                 || ['PARADO', 'ERRO'].includes(data.estado);
             $("#flow-start").prop("disabled", flowActionPending || flow.ativo || needsReset || data.calibracao_ativa);
@@ -596,6 +1536,7 @@
             $("#flow-sync-neutral").prop("disabled", flowActionPending || !data.arduino || Boolean(flow.ciclo_id) || data.calibracao_ativa);
             $("#flow-release-servos").prop("disabled", flowActionPending || !data.arduino || flow.ativo || data.calibracao_ativa);
             $("#flow-discard").toggleClass("d-none", !flow.aguardando_leitura);
+            $("#region-new-round").prop("disabled", regionRoundPending || Boolean(flow.ciclo_id));
             const profile = data.fila.perfil_garra;
             const profileHint = profile ? `Perfil ${profile.versao} · ${profile.passos_pegar} passos para pegar e ${profile.passos_entregar} para entregar.` : 'Perfil de movimento indisponível.';
             $("#flow-guidance").text(data.calibracao_ativa ? 'Encerre a calibração para devolver o Arduino à operação. ' + profileHint :
@@ -628,10 +1569,10 @@
             const cameraLabel = currentCameraMode === "mock" ? "Simulada" :
                 resolution ? `${resolution.largura} × ${resolution.altura}` : "Conectada";
             $("#camera-status").toggleClass("badge-offline", !data.camera).text(data.camera ? cameraLabel : "Desconectada");
-            $("#connected-components").text(Number(data.arduino) + Number(data.esteira_conectada) + Number(data.camera));
-            $("#packages-count").text(data.total_ciclos || 0);
+            setAnimatedValue("#connected-components", Number(data.arduino) + Number(data.esteira_conectada) + Number(data.camera));
+            setAnimatedValue("#packages-count", data.total_ciclos || 0);
             const phase = data.fila.fluxo.estado || data.estado;
-            $("#system-state-metric").text(labels[phase] || phase.replaceAll("_", " "));
+            setAnimatedText("#system-state-metric", labels[phase] || phase.replaceAll("_", " "));
             $("#current-product").text(data.produto || "—");
             $("#current-state").text(data.uf || "—");
             $("#current-macroregion").text(data.macroregiao || "—");
@@ -650,6 +1591,54 @@
     }
 
     $(function () {
+        if (document.fullscreenEnabled) $("#presentation-fullscreen").removeClass("d-none");
+        $("#presentation-fullscreen").on("click", async () => {
+            if (document.fullscreenElement === document.getElementById("dashboard")) await document.exitFullscreen();
+            else await document.getElementById("dashboard").requestFullscreen();
+        });
+        document.addEventListener("fullscreenchange", () => {
+            const expanded = document.fullscreenElement === document.getElementById("dashboard");
+            $("#presentation-fullscreen").attr("aria-label", expanded ? "Sair da tela cheia" : "Expandir painel em tela cheia")
+                .html(`<i class="bi bi-${expanded ? "fullscreen-exit" : "arrows-fullscreen"}" aria-hidden="true"></i> ${expanded ? "Sair da tela cheia" : "Tela cheia"}`);
+        });
+        $("#region-new-round").on("click", async function () {
+            if (!window.confirm("Iniciar uma nova rodada de entregas? As etapas voltarão ao início, mas os ciclos e o histórico serão preservados.")) return;
+            regionRoundPending = true;
+            $(this).prop("disabled", true);
+            try {
+                const result = await apiRequest("{{ url_for('api.start_region_round') }}", {method: "POST"});
+                renderRegionProgress(result.etapas_regioes);
+            } catch (error) {
+                setFeedback(error.message);
+            } finally {
+                regionRoundPending = false;
+                updateStatus().catch(error => setFeedback(error.message));
+            }
+        });
+        $("#production-prev").on("click", () => {
+            if (productionPage > 1 && latestProductionData) {
+                productionPage -= 1;
+                renderProduction(latestProductionData);
+            }
+        });
+        $("#production-next").on("click", () => {
+            if (latestProductionData && productionPage * productionPageSize < (latestProductionData.producao || []).length) {
+                productionPage += 1;
+                renderProduction(latestProductionData);
+            }
+        });
+        $("#queue-prev").on("click", () => {
+            if (queuePage > 1 && latestQueueSnapshot) {
+                queuePage -= 1;
+                renderQueue(latestQueueSnapshot);
+            }
+        });
+        $("#queue-next").on("click", () => {
+            if (latestQueueSnapshot && queuePage * queuePageSize < (latestQueueSnapshot.itens || []).length) {
+                queuePage += 1;
+                renderQueue(latestQueueSnapshot);
+            }
+        });
         $("#flow-start").on('click', () => controlFlow('/api/flow/start'));
         $("#flow-stop").on('click', () => controlFlow('/api/system/stop'));
         $("#flow-reset").on('click', () => controlFlow('/api/system/reset'));
