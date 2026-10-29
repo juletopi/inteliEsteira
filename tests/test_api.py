@@ -65,6 +65,11 @@ class ApiTests(unittest.TestCase):
             "queue-notice",
             "presence-status",
             "camera-image",
+            "production-page-info",
+            "production-prev",
+            "production-next",
+            "region-grid",
+            "region-new-round",
         ):
             with self.subTest(element_id=element_id):
                 self.assertIn(f'id="{element_id}"', html)
@@ -75,6 +80,8 @@ class ApiTests(unittest.TestCase):
                         "start-button", "stop-button", "reset-button", "operation-feedback", "communication-table-body"):
             self.assertNotIn(f'id="{element}"', html, element)
         self.assertIn("/api/status", html)
+        self.assertIn("/api/region-progress/new-round", html)
+        self.assertLess(html.index('id="webcam"'), html.index('id="linha-de-producao"'))
 
     def test_product_and_history_pages_expose_dynamic_tables(self):
         products_html = self.client.get("/produtos").get_data(as_text=True)
@@ -92,7 +99,24 @@ class ApiTests(unittest.TestCase):
         self.assertIn('id="select-all-products"', products_html)
         self.assertIn('id="download-batch-button"', products_html)
         self.assertIn('id="history-table-body"', history_html)
+        self.assertIn('id="history-page-info"', history_html)
+        self.assertIn('id="history-prev"', history_html)
+        self.assertIn('id="history-next"', history_html)
         self.assertIn("/api/cycles", history_html)
+
+    def test_cycle_history_pages_include_all_records(self):
+        repository = self.client.application.extensions["cycle_repository"]
+        for number in range(23):
+            repository.start(f"cycle-{number:02d}", "")
+
+        first = self.client.get("/api/cycles?limit=10&offset=0").get_json()
+        second = self.client.get("/api/cycles?limit=10&offset=10").get_json()
+        third = self.client.get("/api/cycles?limit=10&offset=20").get_json()
+
+        self.assertEqual([first["total"], second["total"], third["total"]], [23, 23, 23])
+        self.assertEqual([len(first["ciclos"]), len(second["ciclos"]), len(third["ciclos"])], [10, 10, 3])
+        ids = [cycle["id"] for page in (first, second, third) for cycle in page["ciclos"]]
+        self.assertEqual(len(set(ids)), 23)
 
     def test_connection_page_exposes_real_diagnostics(self):
         html = self.client.get("/conexao").get_data(as_text=True)
@@ -529,7 +553,7 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(self.client.post("/api/camera/identify").status_code, 200)
             status = self.client.get("/api/status").get_json()
         self.assertEqual(status["identificacao"]["produto"]["id"], "OBSERVED")
-        self.assertEqual(status["identificacao"]["destino"], "R09")
+        self.assertEqual(status["identificacao"]["destino"], "R10")
         self.assertTrue(status["identificacao"]["somente_observacao"])
         self.assertEqual(status["producao"], [])
         self.assertEqual(status["fila"]["itens"], [])
@@ -684,7 +708,7 @@ class ApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.get_json()["destino"], "R04")
+        self.assertEqual(response.get_json()["destino"], "R03")
         cycle_id = response.get_json()["ciclo_id"]
         history = self.client.get("/api/cycles").get_json()["ciclos"]
         detail = self.client.get(f"/api/cycles/{cycle_id}").get_json()["ciclo"]

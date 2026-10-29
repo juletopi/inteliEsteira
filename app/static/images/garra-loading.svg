@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 160" width="360" height="160">
+  <title>Garra levando um cubo ao ponto de entrega</title>
+  <style>
+    .claw { animation: claw-route 5.6s ease-in-out infinite; }
+    .cube { animation: cube-route 5.6s ease-in-out infinite; }
+    .finger-left { animation: close-left 5.6s ease-in-out infinite; }
+    .finger-right { animation: close-right 5.6s ease-in-out infinite; }
+    .target-pulse { animation: target-pulse 5.6s ease-in-out infinite; transform-origin: 278px 115px; }
+    @keyframes claw-route {
+      0%, 9% { transform: translate(64px, -20px); }
+      19%, 29% { transform: translate(64px, 0); }
+      38% { transform: translate(64px, -35px); }
+      66% { transform: translate(244px, -35px); }
+      78%, 85% { transform: translate(244px, 0); }
+      94% { transform: translate(244px, -20px); }
+      100% { transform: translate(64px, -20px); }
+    }
+    @keyframes cube-route {
+      0%, 29% { transform: translate(0, 0); opacity: 1; }
+      38% { transform: translate(0, -35px); opacity: 1; }
+      66% { transform: translate(180px, -35px); opacity: 1; }
+      78%, 89% { transform: translate(180px, 0); opacity: 1; }
+      96%, 100% { transform: translate(180px, 0); opacity: 0; }
+    }
+    @keyframes close-left {
+      0%, 19%, 85%, 100% { transform: translateX(0); }
+      29%, 78% { transform: translateX(4px); }
+    }
+    @keyframes close-right {
+      0%, 19%, 85%, 100% { transform: translateX(0); }
+      29%, 78% { transform: translateX(-4px); }
+    }
+    @keyframes target-pulse {
+      0%, 65%, 100% { opacity: .28; transform: scale(.8); }
+      80%, 91% { opacity: .8; transform: scale(1.15); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .claw, .cube, .finger-left, .finger-right, .target-pulse { animation: none; }
+      .claw { transform: translate(64px, -20px); }
+    }
+  </style>
+
+  <path d="M24 131H336" stroke="#c6d8d4" stroke-width="2" stroke-linecap="round"/>
+  <path d="M118 78H236" stroke="#bad4d0" stroke-width="2" stroke-dasharray="4 7" stroke-linecap="round"/>
+  <path d="M56 130h58" stroke="#d9e7e3" stroke-width="8" stroke-linecap="round"/>
+  <path d="M247 130h62" stroke="#b9dcca" stroke-width="8" stroke-linecap="round"/>
+  <circle class="target-pulse" cx="278" cy="115" r="23" fill="#b9e6ca"/>
+  <circle cx="278" cy="115" r="15" fill="none" stroke="#55a97c" stroke-width="2" stroke-dasharray="3 4"/>
+  <path d="m272 115 4 4 9-10" fill="none" stroke="#30875a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g class="cube">
+    <path d="m67 100 17-9 17 9-17 9Z" fill="#ffd3a3" stroke="#d87842" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M67 100v22l17 9v-22Z" fill="#f5a266" stroke="#d87842" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M84 109v22l17-9v-22Z" fill="#e88750" stroke="#d87842" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M79 95h9" stroke="#fff5e7" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <g class="claw">
+    <rect x="7" y="16" width="26" height="7" rx="3.5" fill="#8aa5a5"/>
+    <rect x="17" y="22" width="6" height="39" rx="3" fill="#5b797d"/>
+    <circle cx="20" cy="62" r="8" fill="#2f5960"/>
+    <circle cx="20" cy="62" r="3" fill="#9dc3bf"/>
+    <path d="M9 63h22v11H9z" fill="#355f66"/>
+    <path d="M10 67h20" stroke="#709295" stroke-width="2" stroke-linecap="round"/>
+    <g class="finger-left">
+      <path d="M9 73 4 82v16h7" fill="none" stroke="#244950" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M11 98h5" stroke="#709295" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <g class="finger-right">
+      <path d="m31 73 5 9v16h-7" fill="none" stroke="#244950" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M24 98h5" stroke="#709295" stroke-width="2" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <text x="84" y="151" text-anchor="middle" fill="#76918e" font-size="9" font-family="Arial, sans-serif" font-weight="700" letter-spacing="1.5">COLETA</text>
+  <text x="278" y="151" text-anchor="middle" fill="#498b69" font-size="9" font-family="Arial, sans-serif" font-weight="700" letter-spacing="1.5">ENTREGA</text>
+</svg>

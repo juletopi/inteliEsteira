@@ -70,6 +70,17 @@
         color: var(--muted);
         text-align: center;
     }
+
+    .history-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 0.82rem;
+    }
 </style>
 {% endblock %}
 
@@ -107,12 +118,23 @@
                 </tbody>
             </table>
         </div>
+        <nav class="history-pagination" aria-label="Páginas do histórico">
+            <span id="history-page-info" aria-live="polite">Nenhum registro</span>
+            <div class="d-flex gap-2">
+                <button type="button" id="history-prev" class="btn btn-outline-secondary btn-sm" disabled>Anterior</button>
+                <button type="button" id="history-next" class="btn btn-outline-secondary btn-sm" disabled>Próxima</button>
+            </div>
+        </nav>
     </section>
 </main>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    const historyPageSize = 10;
+    let historyPage = 1;
+    let historyRequestId = 0;
+
     function formatDate(value) {
         if (!value) return "—";
         return new Intl.DateTimeFormat("pt-BR", {
@@ -163,25 +185,50 @@
     }
 
     async function loadHistory() {
-        const response = await fetch("{{ url_for('api.list_cycles') }}?limit=100");
+        const requestId = ++historyRequestId;
+        const response = await fetch(`{{ url_for('api.list_cycles') }}?limit=${historyPageSize}&offset=${(historyPage - 1) * historyPageSize}`);
         const data = await response.json();
+        if (requestId !== historyRequestId) return;
         if (!response.ok) {
             throw new Error(data.erro?.mensagem || "Não foi possível carregar o histórico.");
         }
+        const total = data.total || 0;
+        const pageCount = Math.max(1, Math.ceil(total / historyPageSize));
+        if (historyPage > pageCount) {
+            historyPage = pageCount;
+            return loadHistory();
+        }
         renderHistory(data.ciclos);
+        $("#history-page-info").text(total ? `Página ${historyPage} de ${pageCount} · ${total} registros` : "Nenhum registro");
+        $("#history-prev").prop("disabled", historyPage === 1);
+        $("#history-next").prop("disabled", historyPage === pageCount);
     }
 
     $(function () {
-        loadHistory().catch((error) => {
-            $("#history-table-body").html(
-                $("<tr>").append(
-                    $("<td>", { colspan: 6 }).append(
-                        $("<div>", { class: "empty-state" }).text(error.message)
-                    )
-                )
-            );
+        $("#history-prev").on("click", () => {
+            if (historyPage > 1) {
+                historyPage -= 1;
+                loadHistory().catch(showHistoryError);
+            }
         });
+        $("#history-next").on("click", () => {
+            if (!$("#history-next").prop("disabled")) {
+                historyPage += 1;
+                loadHistory().catch(showHistoryError);
+            }
+        });
+        loadHistory().catch(showHistoryError);
         window.setInterval(() => loadHistory().catch(() => {}), 5000);
     });
+
+    function showHistoryError(error) {
+        $("#history-table-body").html(
+            $("<tr>").append(
+                $("<td>", { colspan: 6 }).append(
+                    $("<div>", { class: "empty-state" }).text(error.message)
+                )
+            )
+        );
+    }
 </script>
 {% endblock %}
