@@ -8,24 +8,19 @@
 <h3>Adicionado</h3>
 
 - Animações no Dashboard para a apresentação, mantendo o visual original:
-  - entrada escalonada dos blocos, contagem animada nos cards de métricas e brilho periódico nos cards
-  - Caminho do cubo com faixa em movimento durante a operação, ícone da etapa ativa animado
-    (pulso do sensor, garra balançando, leitura do ArUco, esteira andando), selo de etapa concluída
-    e setas entre as etapas que acompanham o progresso
-  - varredura na prévia da câmera durante a leitura do ArUco e ponto pulsante nos componentes conectados
-  - Etapas por região com brilho na barra de progresso, placar que pulsa a cada entrega,
-    bandeiras em cinza até a entrega e bandeira tremulando na chegada
-  - cubo novo entrando com animação na Linha de produção
-  - animações desligadas quando o sistema pede movimento reduzido (`prefers-reduced-motion`)
+  - Entrada escalonada dos blocos, contagem animada nos cards de métricas e brilho periódico nos cards
+  - Caminho do cubo com faixa em movimento durante a operação, ícone da etapa ativa animado (pulso do sensor, garra balançando, leitura do ArUco, esteira andando), selo de etapa concluída e setas entre as etapas que acompanham o progresso
+  - Varredura na prévia da câmera durante a leitura do ArUco e ponto pulsante nos componentes conectados
+  - Etapas por região com brilho na barra de progresso, placar que pulsa a cada entrega, bandeiras em cinza até a entrega e bandeira tremulando na chegada
+  - Cubo novo entrando com animação na linha de produção
+  - Animações desligadas quando o sistema pede movimento reduzido (`prefers-reduced-motion`)
 - Visão geral do Dashboard numa tela só (a partir de 1200 px de largura):
-  - duas colunas: métricas, Caminho do cubo e as 5 regiões em uma linha à esquerda;
-    câmera e os 3 últimos cubos da linha de produção à direita
-  - status de cada componente (HC-SR04, braço, webcam, esteira) embaixo da etapa correspondente
+  - Duas colunas: métricas, Caminho do cubo e as 5 regiões em uma linha à esquerda; câmera e os 3 últimos cubos da linha de produção à direita
+  - Status de cada componente (HC-SR04, braço, webcam, esteira) embaixo da etapa correspondente
   - "Garra em movimento" sobreposta à câmera e aviso de entrega sobre o cabeçalho das regiões, sem deslocar o layout
-  - compactação extra em telas baixas (ex.: projetor 1366×768)
-  - fila automática e controles do operador logo abaixo da visão geral
-- Bootstrap 5.3.3, Bootstrap Icons 1.11.3 e jQuery 3.7.1 servidos de `app/static/vendor/`,
-  sem depender de internet
+  - Compactação extra em telas baixas (ex.: projetor 1366×768)
+  - Fila automática e controles do operador logo abaixo da visão geral
+- Bootstrap 5.3.3, Bootstrap Icons 1.11.3 e jQuery 3.7.1 servidos de `app/static/vendor/`, sem depender de internet
 
 <h3>Alterado</h3>
 
@@ -33,7 +28,11 @@
 
 </details>
 
-<details open>
+<br>
+
+---
+
+<details>
 <summary>
   <h3 style="display: inline-block;">[v0.3.0] - 21/10/2026</h3>
 </summary>
@@ -60,7 +59,7 @@
 
 </details>
 
-<details open>
+<details>
 <summary>
   <h3 style="display: inline-block;">[v0.2.0] - 17/09/2026</h3>
 </summary>
@@ -97,7 +96,7 @@
 
 </details>
 
-<details open>
+<details>
 <summary>
   <h3 style="display: inline-block;">[v0.1.0] - 03/09/2026</h3>
 </summary>
