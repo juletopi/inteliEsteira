@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="320" height="120">
+  <title>Caixinha chegando à região de destino</title>
+  <style>
+    .box { animation: arrive 2.8s cubic-bezier(.35, .02, .2, 1) both; }
+    .destination { animation: welcome 2.8s ease-out both; transform-origin: 272px 62px; }
+    .check { animation: reveal 2.8s ease-out both; }
+    @keyframes arrive {
+      0% { transform: translate(-18px, 0); opacity: 0; }
+      9% { opacity: 1; }
+      40% { transform: translate(100px, -9px); opacity: 1; }
+      70% { transform: translate(193px, -10px); opacity: 1; }
+      84% { transform: translate(218px, 2px); opacity: 1; }
+      91% { transform: translate(218px, -3px); opacity: 1; }
+      100% { transform: translate(218px, 0); opacity: 1; }
+    }
+    @keyframes welcome {
+      0%, 64% { transform: scale(.85); opacity: .35; }
+      86% { transform: scale(1.13); opacity: .85; }
+      100% { transform: scale(1); opacity: .5; }
+    }
+    @keyframes reveal {
+      0%, 78% { opacity: 0; transform: scale(.6); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .box, .destination, .check { animation: none; }
+      .box { transform: translate(218px, 0); }
+    }
+  </style>
+
+  <path d="M21 88h278" stroke="#c8ded5" stroke-width="3" stroke-linecap="round"/>
+  <path d="M51 61h173" stroke="#a8cfc1" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+  <path d="m213 55 9 6-9 6" fill="none" stroke="#74ac96" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 91h62M248 91h51" stroke="#d9eae1" stroke-width="9" stroke-linecap="round"/>
+
+  <g class="destination">
+    <circle cx="272" cy="62" r="25" fill="#9ed9b7"/>
+  </g>
+  <path d="M272 28c-12 0-21 9-21 21 0 15 21 36 21 36s21-21 21-36c0-12-9-21-21-21Z" fill="#2b8c64"/>
+  <circle cx="272" cy="49" r="8" fill="#e9fff1"/>
+  <circle cx="272" cy="49" r="3" fill="#5eb78a"/>
+
+  <g class="box">
+    <path d="m29 65 15-8 15 8-15 8Z" fill="#ffdab1" stroke="#ce784a" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M29 65v18l15 8V73Z" fill="#f2a36d" stroke="#ce784a" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M44 73v18l15-8V65Z" fill="#e78a56" stroke="#ce784a" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M39 60h8" stroke="#fff8ec" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <g class="check">
+    <circle cx="297" cy="35" r="11" fill="#fff"/>
+    <path d="m292 35 3 3 6-7" fill="none" stroke="#26945f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="35" y="110" fill="#78978b" font-size="9" font-family="Arial, sans-serif" font-weight="700" letter-spacing="1.4">SAÍDA</text>
+  <text x="272" y="110" text-anchor="middle" fill="#428861" font-size="9" font-family="Arial, sans-serif" font-weight="700" letter-spacing="1.4">REGIÃO</text>
+</svg>

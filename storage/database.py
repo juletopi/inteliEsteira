@@ -50,6 +50,12 @@ CREATE INDEX IF NOT EXISTS idx_cycles_started_at
 CREATE INDEX IF NOT EXISTS idx_cycle_events_cycle_id
     ON cycle_events(cycle_id, id);
 
+CREATE TABLE IF NOT EXISTS region_progress_round (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    baseline_cycle_rowid INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS operation_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id TEXT NOT NULL,

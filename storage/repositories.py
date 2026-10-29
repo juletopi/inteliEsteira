@@ -341,14 +341,20 @@ class CycleRepository:
                 ]
         return result
 
-    def list_recent(self, limit: int = 100) -> list[dict]:
+    def list_recent(self, limit: int = 100, offset: int = 0) -> list[dict]:
         safe_limit = max(1, min(int(limit), 500))
+        safe_offset = max(0, int(offset))
         with self.database.connect() as connection:
             rows = connection.execute(
-                self._projection() + " ORDER BY c.started_at DESC LIMIT ?",
-                (safe_limit,),
+                self._projection() + " ORDER BY c.started_at DESC, c.cycle_id DESC LIMIT ? OFFSET ?",
+                (safe_limit, safe_offset),
             ).fetchall()
         return [self._serialize(row) for row in rows]
+
+    def count_all(self) -> int:
+        with self.database.connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS total FROM cycles").fetchone()
+        return int(row["total"])
 
     def count_completed(self) -> int:
         with self.database.connect() as connection:
@@ -356,6 +362,55 @@ class CycleRepository:
                 "SELECT COUNT(*) AS total FROM cycles WHERE status = 'FINALIZADO'"
             ).fetchone()
         return int(row["total"])
+
+    def region_progress_deliveries(self) -> tuple[dict[tuple[str, str], dict], str | None]:
+        """Conta apenas entregas fisicas confirmadas na rodada atual."""
+        with self.database.connect() as connection:
+            round_row = connection.execute(
+                "SELECT baseline_cycle_rowid, started_at FROM region_progress_round WHERE id = 1"
+            ).fetchone()
+            baseline = int(round_row["baseline_cycle_rowid"]) if round_row else 0
+            rows = connection.execute(
+                """
+                SELECT c.state, c.destination, COUNT(*) AS total,
+                       MAX(c.finished_at) AS last_delivery
+                FROM cycles c
+                WHERE c.rowid > ? AND c.status = 'FINALIZADO'
+                  AND c.state IS NOT NULL AND c.destination IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM cycle_events e
+                      WHERE e.cycle_id = c.cycle_id AND e.event_type = 'MODO_OPERACAO'
+                        AND json_extract(e.payload, '$.simulado') = 0
+                  )
+                GROUP BY c.state, c.destination
+                """,
+                (baseline,),
+            ).fetchall()
+        deliveries = {
+            (row["state"], row["destination"]): {
+                "total": int(row["total"]), "ultima_entrega": row["last_delivery"]
+            }
+            for row in rows
+        }
+        return deliveries, round_row["started_at"] if round_row else None
+
+    def start_new_region_round(self) -> None:
+        """Reinicia somente o placar; ciclos e historico permanecem intactos."""
+        with self.database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT COALESCE(MAX(rowid), 0) AS baseline FROM cycles"
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO region_progress_round (id, baseline_cycle_rowid, started_at)
+                VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    baseline_cycle_rowid = excluded.baseline_cycle_rowid,
+                    started_at = excluded.started_at
+                """,
+                (int(row["baseline"]), _now_iso()),
+            )
 
     def destination_counts(self) -> dict:
         """Balanceamento por ciclos confirmados; nao mede ocupacao fisica."""

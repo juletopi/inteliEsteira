@@ -11,7 +11,7 @@ R01, R02, R03, R07, R08 e R09.
 | --- | --- | --- |
 | Backend Flask + fila + câmera | PC (Windows) | `http://127.0.0.1:5000` |
 | Arduino Uno: MeArm (pinos 10/11/6/3) e HC-SR04 (TRIG 8, ECHO 9) | Uno | USB `COM3`, 9600 baud |
-| Ponte da esteira (`ev3/server.py`) | EV3 (Pybricks/ev3dev) | TCP `169.254.209.204:8765` (link-local), token |
+| Ponte da esteira (`ev3/server.py`) | EV3 (Pybricks/ev3dev) | TCP `192.168.137.3:8765` (IP fixo no Bluetooth), token |
 
 Protocolo: `CMD:<ciclo>:<comando>` → `ACK` / `EVT` / `ERR`. O fluxo de um cubo:
 `SENSOR:PRESENTE` → `GARRA:PERFIL` + `GARRA:AREA:P01` → 4 `GARRA:PASSO:P` →
@@ -64,7 +64,7 @@ O catálogo `data/inteliesteira.json` (e os iniciais `data/catalogo-inicial.json
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\gravar-firmware.ps1 -Port COM3
    ```
-4. EV3 ligado ao PC (IP atual `169.254.209.204`; se mudar, ajuste `EV3_HOST` e use `-Ev3Host`). Instala a ponte, a chave SSH deste
+4. EV3 pareado por Bluetooth (veja "Proteção do cartão SD do EV3" para o primeiro acesso). Instala a ponte, a chave SSH deste
    PC e o serviço que sobe a ponte em todo boot (pede a senha do EV3 no SSH e no sudo):
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\instalar-ev3.ps1
@@ -91,6 +91,38 @@ O catálogo `data/inteliesteira.json` (e os iniciais `data/catalogo-inicial.json
 Não feche a janela "InteliEsteira backend": fechar a janela encerra o backend. O log fica em
 `output/logs/backend.log` (rotaciona acima de 10 MB).
 
+## Etapas por região no Dashboard
+
+O quadro **Etapas por região** acompanha as dez UFs com caixas fixas da bancada,
+em cinco regiões com duas entregas cada. Uma UF só fica marcada quando um ciclo
+físico termina em `FINALIZADO` na caixa configurada para ela. Leitura da câmera,
+ciclo em andamento, erro, entrega em outra caixa e simulação não completam a etapa.
+Quando as duas UFs da região forem entregues, o cartão da região fica concluído.
+
+Por padrão, o quadro mostra o progresso acumulado do histórico local. Use **Nova
+rodada** para começar um placar vazio sem apagar ciclos anteriores; o início da
+rodada fica salvo no banco e continua valendo após reiniciar o backend. Espere uma
+entrega em andamento terminar antes de iniciar outra rodada.
+
+## Proteção do cartão SD do EV3
+
+O ev3dev roda inteiro do microSD e corrompe se perder energia no meio de uma gravação
+(pilhas acabando, pilhas retiradas, cabo puxado). O `scripts\instalar-ev3.ps1` instala:
+
+- `inteliesteira-energia`: desliga o EV3 com `poweroff` quando a bateria fica abaixo de
+  6,5 V por 5 min seguidos ou após 30 min sem o backend conectado na ponte;
+- log do sistema só em memória (`journald` com `Storage=volatile`);
+- permissão para o PC desligar o EV3 sem senha: `scripts\desligar-ev3.ps1`;
+- IP fixo `192.168.137.3` na rede Bluetooth (PC em `192.168.137.1`).
+
+Regras da bancada: desligue com `scripts\desligar-ev3.ps1` (ou pelo menu do bloco) antes de
+tirar pilhas ou guardar; não deixe o EV3 ligado de um dia para o outro. Com tudo funcionando,
+grave uma imagem de backup do cartão (balenaEtcher/Win32 Disk Imager) para restaurar em minutos.
+
+Num EV3 recém-gravado o IPv4 ainda não existe: ache o IPv6 link-local com
+`Get-NetNeighbor -InterfaceAlias 'Conexão de Rede Bluetooth' -AddressFamily IPv6` e rode
+`scripts\instalar-ev3.ps1 -Ev3Host "fe80::...%<índice>"` (pede a senha `maker` no SSH e no sudo).
+
 ## Quando algo para
 
 **Leitura do ArUco falhou** (cubo na esteira sem etiqueta legível, marcador sem cadastro):
@@ -110,7 +142,7 @@ cubo pode estar na garra. Retire/reposicione o cubo e use **Resetar operação**
 | Leitura pendente "não está vinculado a um produto" | ArUco sem produto no catálogo | Cadastrar o marcador em **Produtos** ou **Descartar unidade** |
 | "Cubo detectado" com a área vazia | Fundo dentro do limite do sensor | Ver "agora X cm" no Dashboard; limite ≤ fundo − 3 cm no calibrador |
 | Fluxo em **Aguardando conexão** | Arduino, EV3 ou câmera fora | Ele reconecta sozinho a cada 2 s; ver o aviso na fila |
-| EV3 não conecta | Ponte parada ou EV3 fora da rede | `ping 169.254.209.204`; rodar `scripts\instalar-ev3.ps1` de novo |
+| EV3 não conecta | Ponte parada ou EV3 fora da rede | `ping 192.168.137.3`; rodar `scripts\instalar-ev3.ps1` de novo |
 | Braço parou no meio do movimento | Parada/erro durante o movimento | **Soltar servos**, alinhar no neutro, **Confirmar braço no neutro** (ou só resetar com `AUTO_SYNC_NEUTRAL`) |
 
 Com `AUTO_SYNC_NEUTRAL`, o sistema assume o braço no neutro salvo; fora dele, o braço salta
