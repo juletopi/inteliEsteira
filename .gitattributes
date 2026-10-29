@@ -1,0 +1,2 @@
+# Arquivos executados no EV3 (Linux): CRLF quebra bash, systemd e sudoers.
+ev3/sistema/* text eol=lf

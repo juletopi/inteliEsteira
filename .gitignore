@@ -49,3 +49,5 @@ output/antes-json-automatico-*.db
 # Scripts e logs avulsos de bancada (ex.: rede Bluetooth do EV3).
 output/*.ps1
 output/*.log
+# Backups locais de checkpoint (contem token e banco; nunca versionar).
+output/checkpoints/
