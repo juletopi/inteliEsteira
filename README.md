@@ -1,6 +1,6 @@
 <div align="center">
 	<a href="">
-    	<img src="https://github.com/juletopi/inteliEsteira/blob/master/app/static/images/inteliEsteira.png" alt="InteliEsteira-logo" width="150px" title="InteliEsteira">
+    	<img src="https://github.com/juletopi/inteliEsteira/blob/master/app/static/images/inteliEsteira.png" alt="InteliEsteira-logo" width="120px" title="InteliEsteira">
  	</a>
 	<h2 align="center">InteliEsteira</h2>
 	<p align="center">
